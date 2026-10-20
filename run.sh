@@ -23,9 +23,14 @@ fi
 log "Mengunduh model"
 mkdir -p checkpoints
 if [ ! -f checkpoints/sam2.1_hiera_large.pt ]; then
-  wget -q --show-progress -O checkpoints/tmp.pt \
-    https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt
-  mv checkpoints/tmp.pt checkpoints/sam2.1_hiera_large.pt
+  if wget -q --show-progress -O checkpoints/tmp.pt \
+    https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt; then
+    mv checkpoints/tmp.pt checkpoints/sam2.1_hiera_large.pt
+  else
+    echo "Unduhan utama gagal, mencoba cadangan Hugging Face..."
+    rm -f checkpoints/tmp.pt
+    python3 -c "from huggingface_hub import hf_hub_download as d; d('facebook/sam2.1-hiera-large','sam2.1_hiera_large.pt',local_dir='checkpoints')"
+  fi
 fi
 python3 - <<'PY'
 from huggingface_hub import snapshot_download
