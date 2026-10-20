@@ -153,7 +153,8 @@ def create_app(settings=None, vast=None, run_scheduler=True):
     @app.get('/api/config')
     def config():
         return {'machine_id': settings.machine_id, 'max_price': settings.max_price, 'min_vram': settings.min_vram,
-                'max_minutes': settings.max_minutes, 'max_upload_mb': settings.max_upload_mb}
+                'max_minutes': settings.max_minutes, 'max_upload_mb': settings.max_upload_mb,
+                'auto_destroy': settings.auto_destroy}
 
     @app.get('/api/jobs')
     def jobs():

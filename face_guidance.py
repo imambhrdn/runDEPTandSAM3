@@ -77,8 +77,7 @@ def track_faces(files, point, report_path, fps=24):
               'missing_frames': missing, 'landmarks': frames}
     Path(report_path).write_text(json.dumps(report), encoding='utf-8')
     if len(missing) == len(files):
-        raise ValueError('Wajah tidak terdeteksi. Gunakan klip dengan wajah terlihat, '
-                         'atau nonaktifkan panduan ekspresi.')
+        report['warning'] = 'Wajah tidak terdeteksi di seluruh frame; mesh wajah dilewati.'
     return frames, report
 
 

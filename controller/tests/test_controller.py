@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
@@ -92,6 +92,29 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(self.store.get(job['id'])['state'], 'failed')
         self.assertEqual(self.vast.destroyed, [789])
 
+    def test_manual_cleanup_retains_gpu_until_user_deletes_it(self):
+        self.settings.auto_destroy = False
+        job = self.start()
+        self.now = job['deadline'] + 1
+        self.engine.tick()
+        for outcome in ['done', 'failed', 'cancelled']:
+            self.store.update(job['id'], state='cleanup', outcome=outcome)
+            self.engine.tick()
+            self.assertEqual(self.vast.destroyed, [])
+            self.assertEqual(self.store.get(job['id'])['state'], 'cleanup')
+            self.assertIn('Hapus manual', self.store.get(job['id'])['stage'])
+        another = self.store.create(source='source.mp4')
+        with self.assertRaises(ValueError):
+            self.store.start(another['id'], self.params)
+        vast = Vast(self.settings)
+        vast.request = Mock()
+        with self.assertRaises(RuntimeError):
+            vast.destroy(789)
+        vast.request.assert_not_called()
+        del self.vast.rows[789]  # Simulate deletion by the user in Vast.ai.
+        self.engine.tick()
+        self.assertEqual(self.store.get(job['id'])['state'], 'cancelled')
+
     def test_uncertain_create_recovers_without_rerenting_after_restart(self):
         self.vast.ambiguous = True
         self.assertEqual(self.start()['state'], 'creating')
@@ -135,7 +158,7 @@ class EngineTests(unittest.TestCase):
     def test_query_and_local_filter_enforce_machine_and_budget(self):
         vast = Vast(self.settings)
         vast.request = Mock(return_value={'offers': [
-            {'id': 1, 'machine_id': 28726, 'dph_total': .2},
+            {'id': 1, 'machine_id': 28726, 'dph_total': .2, 'gpu_ram': 16384, 'disk_space': 30},
             {'id': 2, 'machine_id': 999, 'dph_total': .1},
             {'id': 3, 'machine_id': 28726, 'dph_total': 5}]})
         self.assertEqual([o['id'] for o in vast.offers()], [1])
@@ -153,6 +176,71 @@ class EngineTests(unittest.TestCase):
         self.assertNotIn(self.settings.api_key, json.dumps(payload))
         self.assertEqual(payload['env']['WORKER_TOKEN'], job['token'])
         self.assertIn(self.settings.worker_ref, payload['onstart'])
+        script = payload['onstart']
+        self.assertIn('printf "transformers==4.57.6\\n" > /workspace/gpu-worker/.worker-constraints.txt', script)
+        self.assertIn('export PIP_CONSTRAINT=/workspace/gpu-worker/.worker-constraints.txt', script)
+        self.assertLess(script.index('export PIP_CONSTRAINT='), script.index('exec bash run.sh'))
+        subprocess.run(['bash', '-n'], input=script, text=True, check=True)
+
+    def test_zero_min_vram_disables_only_vram_filter(self):
+        environment = {
+            'PUBLIC_URL': self.settings.public_url, 'VAST_API_KEY': self.settings.api_key,
+            'CONTROLLER_PASSWORD': self.settings.password, 'WORKER_REF': self.settings.worker_ref,
+            'DATA_DIR': str(self.settings.data), 'MIN_VRAM_GB': '0',
+        }
+        with patch.dict('os.environ', environment, clear=True):
+            settings = Settings.from_env()
+        vast = Vast(settings)
+        vast.request = Mock(return_value={'offers': [
+            {'id': 1, 'machine_id': 28726, 'dph_total': .2, 'gpu_ram': 12288, 'disk_space': 30},
+            {'id': 2, 'machine_id': 999, 'dph_total': .1},
+            {'id': 3, 'machine_id': 28726, 'dph_total': 5}]})
+        self.assertEqual([o['id'] for o in vast.offers()], [1])
+        query = vast.request.call_args.kwargs['json']
+        self.assertNotIn('gpu_ram', query)
+        self.assertEqual(query['machine_id'], {'eq': 28726})
+        self.assertEqual(query['dph_total'], {'lte': .30})
+        self.assertEqual(query['compute_cap'], {'gte': 800})
+        self.assertEqual(query['rentable'], {'eq': True})
+        with patch.dict('os.environ', {**environment, 'MIN_VRAM_GB': '-1'}, clear=True):
+            with self.assertRaises(ValueError):
+                Settings.from_env()
+
+    def test_all_machines_filter_vram_then_sort_disk_and_price(self):
+        environment = {
+            'PUBLIC_URL': self.settings.public_url, 'VAST_API_KEY': self.settings.api_key,
+            'CONTROLLER_PASSWORD': self.settings.password, 'WORKER_REF': self.settings.worker_ref,
+            'DATA_DIR': str(self.settings.data), 'VAST_MACHINE_ID': '0',
+            'MIN_VRAM_GB': '12', 'MAX_PRICE_HOUR': '0.099',
+        }
+        with patch.dict('os.environ', environment, clear=True):
+            settings = Settings.from_env()
+        vast = Vast(settings)
+        rows = [
+            dict(id=1, machine_id=100, gpu_ram=12288, disk_space=70, dph_total=.05),
+            dict(id=2, machine_id=200, gpu_ram=12288, disk_space=55, dph_total=.099),
+            dict(id=3, machine_id=300, gpu_ram=24576, disk_space=55, dph_total=.09),
+            dict(id=4, machine_id=400, gpu_ram=8192, disk_space=30, dph_total=.04),
+            dict(id=5, machine_id=500, gpu_ram=12288, disk_space=50, dph_total=.10),
+            dict(id=6, machine_id=600, gpu_ram=12288, disk_space=29, dph_total=.04),
+            dict(id=7, machine_id=700, gpu_ram=12288, dph_total=.04),
+        ]
+        vast.request = Mock(return_value={'offers': rows})
+        self.assertEqual([o['id'] for o in vast.offers()], [3, 2, 1])
+        query = vast.request.call_args.kwargs['json']
+        self.assertNotIn('machine_id', query)
+        self.assertEqual(query['gpu_ram'], {'gte': 12000})
+        self.assertEqual(query['disk_space'], {'gte': 30})
+        self.assertEqual(query['allocated_storage'], 30)
+        self.assertEqual(query['dph_total'], {'lte': .099})
+        self.assertEqual(query['order'], [['disk_space', 'asc'], ['dph_total', 'asc']])
+        self.assertEqual(query['cuda_max_good'], {'gte': 12.4})
+        self.assertEqual(query['compute_cap'], {'gte': 800})
+        self.assertEqual(query['rentable'], {'eq': True})
+        self.assertEqual(query['verified'], {'eq': True})
+        self.vast.offers = lambda: []
+        self.settings.machine_id = 0
+        self.assertEqual(self.start()['stage'], 'GPU tidak tersedia atau tidak memenuhi batas harga/spesifikasi')
 
 
 class WebTests(unittest.TestCase):

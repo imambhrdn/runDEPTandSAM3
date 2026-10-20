@@ -84,6 +84,9 @@ async function poll() {
 }
 api('/api/config').then(data => {
   config = data;
-  $('#limits').textContent = `Machine ${data.machine_id} · Batas US$${data.max_price}/jam · VRAM ≥ ${data.min_vram} GB · Maksimal ${data.max_minutes} menit sewa · Upload ≤ ${data.max_upload_mb} MB`;
+  const vram = data.min_vram === 0 ? 'VRAM tanpa batas minimum' : `VRAM ≥ ${data.min_vram} GB`;
+  const target = data.machine_id === 0 ? 'Semua mesin' : `Machine ${data.machine_id}`;
+  const cleanup = data.auto_destroy ? `Maksimal ${data.max_minutes} menit sewa` : 'Hapus GPU manual di Vast.ai; biaya terus berjalan meskipun job selesai/gagal atau batas waktu tercapai';
+  $('#limits').textContent = `${target} · Batas US$${data.max_price}/jam · ${vram} · Prioritas disk terkecil, lalu harga termurah · ${cleanup} · Upload ≤ ${data.max_upload_mb} MB`;
   poll();
 }).catch(failure);

@@ -26,17 +26,48 @@ Docker harus sudah terpasang; installer tidak mengubah firewall/DNS.
 Target default: **machine ID 28726** (`VAST_MACHINE_ID` di `.env`). Ini ID
 mesin, bukan offer ID atau ID instance. Aplikasi mencari offer aktif dari mesin
 itu dan tidak pindah ke host lain.
+Set `VAST_MACHINE_ID=0` untuk mencari semua mesin. Offer diurutkan berdasarkan
+kapasitas disk tersedia (`disk_space`) terkecil yang cukup, lalu harga total
+termurah. Ini bukan ukuran seluruh disk fisik atau alokasi disk yang dibayar;
+alokasi tetap mengikuti `DISK_GB` (default 30 GB). Harga diperiksa lagi secara
+lokal karena API dapat mengembalikan offer di atas batas.
+
+Untuk mencari semua mesin dengan VRAM minimal 12 GB dan harga maksimal
+US$0,099/jam, isi `.env` lalu buat ulang controller:
+
+```dotenv
+VAST_MACHINE_ID=0
+MIN_VRAM_GB=12
+MAX_PRICE_HOUR=0.099
+```
+
+```bash
+sudo docker compose up -d --build --pull never controller
+```
 
 Default: US$0,30/jam, VRAM ≥16 GB, compute capability ≥8.0 (BF16),
 CUDA driver ≥12.4, host verified, reliabilitas ≥98%, unduh ≥100 Mbps,
 CPU amd64, disk 30 GB, satu GPU, maksimal 45 menit sejak permintaan sewa.
 Jika tidak ada penawaran, job gagal tanpa menaikkan anggaran otomatis.
+Set `MIN_VRAM_GB=0` untuk menonaktifkan batas minimum VRAM pada pencarian.
+GPU dengan VRAM kecil belum teruji dan dapat kehabisan memori; waktu sewa tetap ditagih.
 Batas harga memakai `dph_total` dengan alokasi disk; transfer data dan biaya
 lain yang ditagihkan Vast.ai tidak dibatasi oleh angka itu. Instalasi dan
 unduhan model dilakukan di setiap instance baru, sehingga ikut waktu sewa.
 Video maksimal 30 detik/250 MB, disarankan mulai dari klip 10 detik.
 
 ## Penggunaan dan pembatasan
+
+### Menyimpan instance untuk memeriksa log
+
+Set `AUTO_DESTROY=0` di `.env`, lalu buat ulang controller untuk menonaktifkan
+semua penghapusan otomatis, termasuk setelah sukses, gagal, pembatalan, dan
+batas waktu. GPU tetap ditagih sampai Anda menghapus instance di console Vast.ai.
+Controller tetap memeriksa keberadaan instance; job berikutnya diblokir sampai
+penghapusan manual terkonfirmasi. Batas waktu tidak menghentikan tagihan atau
+menjamin proses di GPU berhenti dalam mode ini. Instance yang sudah terhapus
+tidak dapat dipulihkan. Default `AUTO_DESTROY=1` memakai pembersihan otomatis
+yang dijelaskan di bawah.
 
 - Memilih subjek dilakukan sebelum GPU disewa. Tombol mulai mengizinkan sewa
   untuk satu job; tidak ada penyewaan otomatis saat membuka halaman/upload.
@@ -72,6 +103,10 @@ Video maksimal 30 detik/250 MB, disarankan mulai dari klip 10 detik.
 
 ## Operasi
 
+Controller tidak memerlukan Coolify. Jalankan Docker Compose dari terminal;
+Docker akan menjaga layanan tetap hidup setelah terminal ditutup atau VPS restart.
+Jangan jalankan deployment Coolify bersamaan karena akan ada dua scheduler.
+
 ```bash
 cd runDEPTandSAM3-vps/controller
 docker compose logs --tail=100 -f
@@ -79,6 +114,24 @@ docker compose restart controller
 # Setelah mengubah .env:
 docker compose up -d --build
 ```
+
+Pada VPS yang sudah memiliki image lokal `controller-controller:terminal` dan
+`caddy:2-alpine`, jalankan tanpa build atau mengunduh image lagi:
+
+```bash
+sudo docker compose up -d --no-build --pull never
+```
+
+Image GPU default `pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime` sudah berisi
+Python dan PyTorch; `requirements.txt` tidak memasang PyTorch secara langsung.
+Bootstrap controller menerapkan constraint `transformers==4.57.6` pada pip
+sebelum menjalankan worker, termasuk ketika `WORKER_REF` menunjuk commit lama
+yang belum mengunci Transformers. Ini menghindari Transformers 5 yang
+mensyaratkan PyTorch lebih baru daripada 2.5.1 bawaan image. Constraint berlaku
+untuk semua instance baru yang dibuat controller, bukan instance yang sudah ada.
+Paket tambahan, dependensi SAM 2, dan model yang belum tersedia tetap perlu
+diunduh. Cache image/model milik instance lain tidak dijamin tersedia pada
+instance baru. Menghentikan Coolify tidak menghilangkan unduhan di GPU.
 
 Untuk memperbarui kode, tunggu semua job selesai/GPU terhapus, `git pull`,
 perbarui `WORKER_REF` di `.env` ke output `git rev-parse HEAD`, lalu rebuild.

@@ -43,10 +43,12 @@ class GuidanceTests(unittest.TestCase):
             _, report = self.track([[face(.1)], [face(.8)]], Path(directory))
             self.assertEqual(report['missing_frames'], [1])
 
-    def test_no_face_reports_error(self):
+    def test_no_face_returns_warning_not_error(self):
         with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(ValueError, 'Wajah tidak terdeteksi'):
-                self.track([[]], Path(directory))
+            frames, report = self.track([[]], Path(directory))
+            self.assertEqual(report['missing_frames'], [0])
+            self.assertIsNone(frames[0])
+            self.assertIn('warning', report)
             self.assertTrue((Path(directory) / 'report.json').is_file())
 
     def test_drawing_and_missing_frame(self):

@@ -4,7 +4,8 @@ python-multipart
 opencv-python-headless
 pillow
 numpy
-transformers
+# Transformers 5 requires a newer PyTorch than the worker image provides.
+transformers==4.57.6
 # torch sudah ada di template PyTorch Vast (SAM 2 butuh torch >= 2.5.1)
 
 mediapipe==0.10.21

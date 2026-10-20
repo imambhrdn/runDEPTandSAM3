@@ -1,5 +1,6 @@
 services:
   controller:
+    image: controller-controller:terminal
     build:
       context: ..
       dockerfile: controller/Dockerfile

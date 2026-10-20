@@ -39,6 +39,7 @@ class Settings:
     disk_gb: int = 30
     max_upload_mb: int = 250
     image: str = 'pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime'
+    auto_destroy: bool = True
 
     @classmethod
     def from_env(cls):
@@ -54,7 +55,10 @@ class Settings:
             disk_gb=int(os.getenv('DISK_GB', '30')),
             max_upload_mb=int(os.getenv('MAX_UPLOAD_MB', '250')),
             image=os.getenv('VAST_IMAGE', cls.image),
+            auto_destroy=os.getenv('AUTO_DESTROY', '1') == '1',
         )
+        if os.getenv('AUTO_DESTROY', '1') not in {'0', '1'}:
+            raise ValueError('AUTO_DESTROY harus 0 atau 1.')
         if not re.fullmatch(r'https://[a-zA-Z0-9.-]+(?::\d+)?', config.public_url):
             raise ValueError('PUBLIC_URL harus berupa origin HTTPS, tanpa path.')
         if not re.fullmatch(r'[0-9a-f]{40}', config.worker_ref):
@@ -62,8 +66,8 @@ class Settings:
         if len(config.password) < 16 or not config.api_key:
             raise ValueError('Isi VAST_API_KEY dan password minimal 16 karakter.')
         if not (0 < config.max_price <= 100 and 1 <= config.max_minutes <= 240
-                and config.min_vram >= 16 and config.disk_gb >= 20
-                and config.max_upload_mb > 0 and config.machine_id > 0):
+                and config.min_vram >= 0 and config.disk_gb >= 20
+                and config.max_upload_mb > 0 and config.machine_id >= 0):
             raise ValueError('Batas harga/waktu/VRAM/disk/upload tidak valid.')
         config.data.mkdir(parents=True, exist_ok=True, mode=0o700)
         return config
@@ -138,19 +142,25 @@ class Vast:
         s = self.settings
         query = {'verified': {'eq': True}, 'external': {'eq': False},
                  'rentable': {'eq': True}, 'rented': {'eq': False},
-                 'machine_id': {'eq': s.machine_id}, 'num_gpus': {'eq': 1}, 'gpu_ram': {'gte': s.min_vram * 1000},
+                  'num_gpus': {'eq': 1},
                  'compute_cap': {'gte': 800}, 'cuda_max_good': {'gte': 12.4},
                  'cpu_arch': {'eq': 'amd64'}, 'reliability': {'gte': .98},
                  'inet_down': {'gte': 100}, 'disk_space': {'gte': s.disk_gb},
                  'dph_total': {'lte': s.max_price},
                  'type': 'on-demand', 'allocated_storage': s.disk_gb,
-                 'order': [['dph_total', 'asc']], 'limit': 20}
+                  'order': [['disk_space', 'asc'], ['dph_total', 'asc']], 'limit': 100}
+        if s.machine_id:
+            query['machine_id'] = {'eq': s.machine_id}
+        if s.min_vram:
+            query['gpu_ram'] = {'gte': s.min_vram * 1000}
         result = self.request('POST', '/api/v0/bundles/', json=query)
         offers = (result or {}).get('offers', [])
         # Enforce the price cap locally as well; never silently relax it.
-        return sorted([o for o in offers if o.get('machine_id') == s.machine_id
+        return sorted([o for o in offers if (not s.machine_id or o.get('machine_id') == s.machine_id)
+                       and (not s.min_vram or float(o.get('gpu_ram', 0)) >= s.min_vram * 1000)
+                       and float(o.get('disk_space', 0)) >= s.disk_gb
                        and 0 < float(o.get('dph_total', float('inf'))) <= s.max_price],
-                      key=lambda o: float(o['dph_total']))
+                       key=lambda o: (float(o['disk_space']), float(o['dph_total'])))
 
     def create(self, offer_id, job):
         s = self.settings
@@ -160,6 +170,9 @@ class Vast:
                   'if [ ! -d gpu-worker/.git ]; then git clone --no-checkout '
                   'https://github.com/imambhrdn/runDEPTandSAM3.git gpu-worker; fi\n'
                   'cd gpu-worker\ngit fetch origin\ngit checkout --detach ' + shlex.quote(s.worker_ref) +
+                  # Apply compatibility to published worker refs with unpinned Transformers.
+                  '\nprintf "transformers==4.57.6\\n" > /workspace/gpu-worker/.worker-constraints.txt\n'
+                  'export PIP_CONSTRAINT=/workspace/gpu-worker/.worker-constraints.txt\n'
                   '\nexec bash run.sh\n')
         payload = {'client_id': 'me', 'image': s.image, 'disk': s.disk_gb,
                    'label': job['label'], 'runtype': 'ssh', 'onstart': script,
@@ -192,6 +205,8 @@ class Vast:
         return result.get('instances') if result else None
 
     def destroy(self, iid):
+        if not self.settings.auto_destroy:
+            raise RuntimeError('Penghapusan otomatis dinonaktifkan; hapus instance melalui console Vast.ai.')
         result = self.request('DELETE', f'/api/v0/instances/{int(iid)}/', json={})
         if result is not None and not result.get('success'):
             raise RuntimeError('Vast.ai belum mengonfirmasi penghapusan instance.')
@@ -224,7 +239,8 @@ class Engine:
         if state == 'queued':
             offers = self.vast.offers()
             if not offers:
-                self.store.update(jid, state='failed', stage=f'Machine {self.settings.machine_id} tidak tersedia atau tidak memenuhi batas harga/spesifikasi')
+                target = f'Machine {self.settings.machine_id}' if self.settings.machine_id else 'GPU'
+                self.store.update(jid, state='failed', stage=f'{target} tidak tersedia atau tidak memenuhi batas harga/spesifikasi')
                 return
             # Persist intent BEFORE the non-idempotent rental call.
             with self.store.lock:
@@ -278,10 +294,13 @@ class Engine:
             for iid in job['instance_ids']:
                 instance = self.vast.instance(iid)
                 if instance is not None:
-                    self.vast.destroy(iid)
+                    if self.settings.auto_destroy:
+                        self.vast.destroy(iid)
                     remaining.append(iid)
             if remaining:
-                self.store.update(jid, stage='Menunggu konfirmasi GPU terhapus', scheduler_error='')
+                stage = ('Menunggu konfirmasi GPU terhapus' if self.settings.auto_destroy else
+                         'GPU dipertahankan untuk log; tetap ditagih. Hapus manual di console Vast.ai.')
+                self.store.update(jid, stage=stage, scheduler_error='')
             else:
                 self.store.update(jid, state=job.get('outcome') or 'failed', stage='GPU terhapus',
                                   finished=now, scheduler_error='')
