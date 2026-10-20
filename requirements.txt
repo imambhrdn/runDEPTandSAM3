@@ -1,8 +1,0 @@
-fastapi
-uvicorn[standard]
-python-multipart
-opencv-python-headless
-pillow
-numpy
-transformers
-# torch sudah ada di template PyTorch Vast (SAM 2 butuh torch >= 2.5.1)
