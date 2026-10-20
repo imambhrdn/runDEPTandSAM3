@@ -1,3 +1,9 @@
+## Website pengendali di VPS Ubuntu
+
+Lihat [panduan VPS](controller/README.md) untuk menyewa GPU otomatis pada
+**machine ID 28726**, memproses klip, menyimpan hasil di VPS, lalu menghapus
+instance. Jalur ini memakai Docker Compose dan domain HTTPS, tanpa GPU di VPS.
+
 # Depth + SAM dengan panduan ekspresi
 
 Jalankan `bash run.sh` di template PyTorch Vast.ai (Python 3.10–3.12).

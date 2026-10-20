@@ -1,12 +1,29 @@
 #!/usr/bin/env bash
 # Menyiapkan semuanya, menjalankan server, dan membuka tunnel publik.
-set -e
+set -eE
 cd "$(dirname "$0")"
 log(){ echo -e "\n==> $*"; }
 
+report_setup_failure(){
+  local setup_status=$?
+  if [ "${WORKER_MODE:-0}" = "1" ]; then
+    python3 - <<'PYFAIL' || true
+import json, os, urllib.request
+url = os.environ['CONTROLLER_URL'].rstrip('/') + '/worker/' + os.environ['CONTROLLER_JOB'] + '/failed'
+request = urllib.request.Request(url, method='POST',
+    data=json.dumps({'error': 'Persiapan worker gagal. Periksa log instance Vast.ai.'}).encode(),
+    headers={'Authorization': 'Bearer ' + os.environ['WORKER_TOKEN'], 'Content-Type': 'application/json'})
+with urllib.request.urlopen(request, timeout=15) as response:
+    response.read()
+PYFAIL
+  fi
+  exit "$setup_status"
+}
+trap report_setup_failure ERR
+
 log "Memeriksa ffmpeg dan cloudflared"
 command -v ffmpeg >/dev/null || { apt-get update -qq && apt-get install -y -qq ffmpeg; }
-if [ ! -x ./cloudflared ]; then
+if [ "${WORKER_MODE:-0}" != "1" ] && [ ! -x ./cloudflared ]; then
   case "$(uname -m)" in aarch64|arm64) A=arm64;; *) A=amd64;; esac
   wget -q -O cloudflared "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$A"
   chmod +x cloudflared
@@ -38,6 +55,11 @@ snapshot_download("depth-anything/Depth-Anything-V2-Large-hf")
 from face_guidance import model_path
 print("Model panduan ekspresi:", model_path())
 PY
+
+if [ "${WORKER_MODE:-0}" = "1" ]; then
+  log "Memproses job dari pengendali VPS"
+  exec python3 cloud_worker.py
+fi
 
 export APP_PASSWORD="${APP_PASSWORD:-$(python3 -c 'import secrets;print(secrets.token_hex(5))')}"
 export PORT="${PORT:-8000}"

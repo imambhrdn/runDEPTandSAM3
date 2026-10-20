@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+checkpoints/
+runs/
+*.log
+.installed
+cloudflared
+.env
+controller/.env
+controller/data/
+.venv/

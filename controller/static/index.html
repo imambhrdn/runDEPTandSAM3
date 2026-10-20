@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Depth + SAM · Pengendali GPU</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10151c;color:#eef3f8}body{max-width:960px;margin:auto;padding:30px 20px}h1{font-size:1.8rem}p{line-height:1.6;color:#bdc9d8}section{background:#1a2330;padding:22px;border-radius:14px;margin:20px 0}.row{display:flex;gap:16px;flex-wrap:wrap;align-items:center}button,a.button{background:#54d8bb;color:#09291f;border:0;border-radius:8px;padding:12px 18px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none}button:disabled{opacity:.45;cursor:default}button.cancel{background:#f0ad94}input,select{font:inherit;max-width:100%}input[type=number]{width:65px}label{display:flex;gap:8px;align-items:center;margin:10px 0}.stage{display:inline-block;position:relative;max-width:100%;line-height:0;cursor:crosshair}.stage img{max-width:100%;max-height:60vh}.mark{position:absolute;width:18px;height:18px;border:2px solid #54d8bb;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none}.warning{color:#ffd786}.error{color:#ffb9ad;white-space:pre-wrap}.videos{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}video{width:100%;background:black}a{color:#79dfd1}#jobs button{background:#26364a;color:#eef3f8;margin:4px;padding:8px 12px;font-size:.85rem}[hidden]{display:none!important}small{color:#adbdcf}
+</style>
+</head>
+<body>
+<h1>Depth + SAM + Panduan Ekspresi</h1>
+<p>Unggah video dan pilih subjek di VPS. GPU disewa saat kamu mulai proses, lalu dihapus setelah hasil tersimpan dan diperiksa di VPS.</p>
+<p id="limits"></p>
+<section><h2>1. Unggah video</h2><input id="file" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska"><p id="upload-status">Maksimal 30 detik; disarankan mulai dari klip 10 detik.</p></section>
+<section id="pick" hidden><h2>2. Klik subjek</h2><div class="stage" id="stage"><img id="frame" alt="Frame pertama video"><div id="mark" class="mark" hidden></div></div>
+<p id="point">Klik orang yang ingin diproses.</p>
+<div class="row"><label><input id="face" type="checkbox" checked>Panduan ekspresi</label><label>Dilate <input id="dilate" type="number" min="0" max="30" value="6"></label><label>Feather <input id="feather" type="number" min="0" max="15" value="3"></label><label>Warna <select id="colormap"><option>inferno</option><option>turbo</option><option>viridis</option><option>jet</option></select></label></div>
+<button id="start" disabled>Sewa GPU & proses</button><p><small>Instalasi dan unduhan model termasuk waktu sewa. Biaya transfer dapat ditagihkan terpisah oleh Vast.ai.</small></p></section>
+<section id="result" hidden><h2>Status</h2><p id="status"></p><p id="rental"></p><p id="warning" class="warning"></p><p id="job-error" class="error"></p><p id="cleanup-error" class="error"></p><button id="cancel" class="cancel">Batalkan & hapus GPU</button><div class="videos" id="videos"></div><div class="row" id="downloads"></div></section>
+<p id="error" class="error" role="alert"></p>
+<section><h2>Riwayat</h2><div id="jobs"></div><p><small>Hasil tetap berada di VPS setelah GPU dihapus. Batas sewa memerlukan pengendali VPS tetap aktif; saat VPS mati, pembersihan baru dilanjutkan setelah VPS hidup kembali.</small></p></section>
+<script src="/static/app.js"></script>
+</body></html>

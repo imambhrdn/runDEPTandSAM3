@@ -1,0 +1,6 @@
+{$DOMAIN} {
+    request_body {
+        max_size 260MB
+    }
+    reverse_proxy controller:8080
+}

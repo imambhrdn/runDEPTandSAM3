@@ -1,0 +1,40 @@
+services:
+  controller:
+    build:
+      context: ..
+      dockerfile: controller/Dockerfile
+    env_file: .env
+    restart: unless-stopped
+    stop_grace_period: 60s
+    volumes:
+      - jobs:/data
+    networks:
+      - app
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - app
+    depends_on:
+      - controller
+networks:
+  app:
+volumes:
+  jobs:
+  caddy_data:
+  caddy_config:
