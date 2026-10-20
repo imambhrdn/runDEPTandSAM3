@@ -58,6 +58,7 @@ video{width:100%;border-radius:6px;background:#000}
     <label class="field">Perbesar mask<input id="dilate" type="number" min="0" max="30" value="6"></label>
     <label class="field">Haluskan tepi<input id="feather" type="number" min="0" max="15" value="3"></label>
     <label class="field">Warna depth<select id="cmap"><option>inferno</option><option>turbo</option><option>viridis</option><option>jet</option></select></label>
+    <label class="field"><span><input id="face-guidance" type="checkbox" checked> Panduan ekspresi (Face Mesh)</span></label>
     <button id="go" disabled>Proses di GPU</button>
     <button id="reset" class="ghost">Ganti klip</button>
   </div>
@@ -72,6 +73,8 @@ video{width:100%;border-radius:6px;background:#000}
 
 <section id="s-done" hidden>
   <h2>Selesai</h2>
+  <p id="face-warning" class="msg warn"></p>
+  <a id="tracking-report" hidden download="face-tracking.json">Unduh laporan tracking wajah</a>
   <div class="vids">
     <figure><figcaption>Mask (periksa sampai habis: lubang, tepi, latar yang ikut)</figcaption><video id="vmask" controls loop muted playsinline></video></figure>
     <figure><figcaption>Hasil untuk diunggah ke Omni</figcaption><video id="vcomp" controls loop muted playsinline></video></figure>
@@ -119,7 +122,7 @@ $("#stage").addEventListener("click",e=>{
 $("#go").addEventListener("click",async()=>{
   $("#err").textContent="";
   const r=await fetch(`/api/jobs/${job.id}/start`,{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({x:pt.x,y:pt.y,dilate:+$("#dilate").value,feather:+$("#feather").value,colormap:$("#cmap").value})});
+    body:JSON.stringify({face_guidance:$("#face-guidance").checked,x:pt.x,y:pt.y,dilate:+$("#dilate").value,feather:+$("#feather").value,colormap:$("#cmap").value})});
   if(!r.ok){ $("#err").textContent=(await r.json()).detail||"Gagal memulai."; return; }
   show("s-run"); poll();
 });
@@ -128,6 +131,9 @@ async function poll(){
   let j; try{ const r=await fetch(`/api/jobs/${job.id}`); if(!r.ok) throw 0; j=await r.json(); }
   catch(_){ $("#stagetxt").textContent="Terputus dari server. Mencoba lagi…"; return setTimeout(poll,3000); }
   if(j.state==="done"){
+    $("#face-warning").textContent=j.warning||"";
+    $("#tracking-report").hidden=!j.tracking;
+    if(j.tracking) $("#tracking-report").href=j.tracking;
     $("#vmask").src=j.mask; $("#vcomp").src=j.composite; $("#dl").href=j.composite; show("s-done");
   } else if(j.state==="error"){
     $("#err").textContent="Gagal: "+j.error; show("s-pick");

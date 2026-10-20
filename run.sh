@@ -12,11 +12,11 @@ if [ ! -x ./cloudflared ]; then
   chmod +x cloudflared
 fi
 
-if [ ! -f .installed ]; then
+if [ ! -f .installed ] || ! python3 -c "import mediapipe" >/dev/null 2>&1; then
   log "Memasang paket Python (beberapa menit)"
-  pip install -q -r requirements.txt || pip install -q --break-system-packages -r requirements.txt
-  SAM2_BUILD_CUDA=0 pip install -q "git+https://github.com/facebookresearch/sam2.git" \
-    || SAM2_BUILD_CUDA=0 pip install -q --break-system-packages "git+https://github.com/facebookresearch/sam2.git"
+  python3 -m pip install -q -r requirements.txt || python3 -m pip install -q --break-system-packages -r requirements.txt
+  SAM2_BUILD_CUDA=0 python3 -m pip install -q "git+https://github.com/facebookresearch/sam2.git" \
+    || SAM2_BUILD_CUDA=0 python3 -m pip install -q --break-system-packages "git+https://github.com/facebookresearch/sam2.git"
   touch .installed
 fi
 
@@ -35,6 +35,8 @@ fi
 python3 - <<'PY'
 from huggingface_hub import snapshot_download
 snapshot_download("depth-anything/Depth-Anything-V2-Large-hf")
+from face_guidance import model_path
+print("Model panduan ekspresi:", model_path())
 PY
 
 export APP_PASSWORD="${APP_PASSWORD:-$(python3 -c 'import secrets;print(secrets.token_hex(5))')}"
@@ -43,7 +45,7 @@ pkill -f "uvicorn app:app" 2>/dev/null || true
 pkill -f "cloudflared tunnel" 2>/dev/null || true
 
 log "Menjalankan server dan tunnel"
-nohup uvicorn app:app --host 127.0.0.1 --port "$PORT" > server.log 2>&1 &
+nohup python3 -m uvicorn app:app --host 127.0.0.1 --port "$PORT" > server.log 2>&1 &
 nohup ./cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$PORT" > tunnel.log 2>&1 &
 
 URL=""

@@ -55,6 +55,7 @@ async def basic_auth(request: Request, call_next):
 
 
 class Params(BaseModel):
+    face_guidance: bool = True
     x: float
     y: float
     dilate: int = 6
@@ -138,9 +139,18 @@ def run_job(jid: str, p: Params):
             job["stage"] = "Mask orang dengan SAM 2 (2 dari 4)"
             masks = pc.compute_masks(frames_dir, len(files), [p.x, p.y], SAM_CFG, SAM_CKPT,
                                      "cuda" if CUDA else "cpu")
+            (d / "face-tracking.json").unlink(missing_ok=True)
+            face_landmarks = None
+            tracking = None
+            if p.face_guidance:
+                job["stage"] = "Melacak panduan ekspresi wajah"
+                from face_guidance import track_faces
+                face_landmarks, tracking = track_faces(
+                    files, [p.x, p.y], d / "face-tracking.json")
             job["stage"] = "Menempel depth ke area orang (3 dari 4)"
             comp = d / "composite_png"
-            pc.composite(files, depth, masks, p.colormap, p.dilate, p.feather, comp)
+            pc.composite(files, depth, masks, p.colormap, p.dilate, p.feather, comp,
+                         face_landmarks=face_landmarks)
             job["stage"] = "Menyimpan video (4 dari 4)"
             pc.encode(comp, FPS, d / "composite.mp4")
             mdir = d / "mask_png"
@@ -155,7 +165,12 @@ def run_job(jid: str, p: Params):
             del depth, masks
             if CUDA:
                 torch.cuda.empty_cache()
+        missing = tracking["missing_frames"] if tracking else []
         job.update(state="done", stage="Selesai",
+                   warning=(f"Wajah tidak terlacak pada {len(missing)} frame. "
+                            "Periksa video dan laporan tracking sebelum dipakai di Flow."
+                            if missing else ""),
+                   tracking=f"/runs/{jid}/face-tracking.json" if tracking else None,
                    composite=f"/runs/{jid}/composite.mp4", mask=f"/runs/{jid}/mask_preview.mp4")
     except (Exception, SystemExit) as e:
         job.update(state="error", stage="", error=f"{type(e).__name__}: {e}")

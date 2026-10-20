@@ -83,7 +83,7 @@ def compute_masks(frames_dir, n, point, sam_cfg, sam_ckpt, device):
     return masks
 
 
-def composite(files, depth_u8, masks, colormap, dilate, feather, out_dir):
+def composite(files, depth_u8, masks, colormap, dilate, feather, out_dir, face_landmarks=None):
     out_dir.mkdir(parents=True, exist_ok=True)
     k = max(1, dilate * 2 + 1)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
@@ -100,7 +100,11 @@ def composite(files, depth_u8, masks, colormap, dilate, feather, out_dir):
         alpha = (m.astype(np.float32) / 255.0)[..., None]
         depth_color = cv2.applyColorMap(depth_u8[i], cmap)
         out = depth_color.astype(np.float32) * alpha + orig.astype(np.float32) * (1 - alpha)
-        cv2.imwrite(str(out_dir / f"{i:05d}.png"), out.astype(np.uint8))
+        result = out.astype(np.uint8)
+        if face_landmarks is not None:
+            from face_guidance import draw_mesh
+            result = draw_mesh(result, face_landmarks[i])
+        cv2.imwrite(str(out_dir / f"{i:05d}.png"), result)
 
 
 def encode(out_dir, fps, out_path):
@@ -110,6 +114,8 @@ def encode(out_dir, fps, out_path):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--face-guidance", action="store_true",
+                    help="tambahkan panduan ekspresi wajah dari video asli")
     ap.add_argument("--video", required=True)
     ap.add_argument("--point", nargs=2, type=float, required=True, metavar=("X", "Y"))
     ap.add_argument("--out", default="composite.mp4")
@@ -138,7 +144,14 @@ def main():
     depth = compute_depth(files, args.depth_model, 0 if device == "cuda" else -1)
     masks = compute_masks(frames_dir, len(files), args.point,
                           args.sam_cfg, args.sam_ckpt, device)
-    composite(files, depth, masks, args.colormap, args.dilate, args.feather, comp_dir)
+    landmarks = None
+    if args.face_guidance:
+        from face_guidance import track_faces
+        landmarks, report = track_faces(files, args.point, work / "face-tracking.json", args.fps)
+        if report["missing_frames"]:
+            print(f'PERINGATAN: wajah hilang pada {len(report["missing_frames"])} frame; periksa hasil.')
+    composite(files, depth, masks, args.colormap, args.dilate, args.feather, comp_dir,
+              face_landmarks=landmarks)
     encode(comp_dir, args.fps, Path(args.out))
     # simpan juga mask video untuk diperiksa
     mdir = work / "mask_preview"
