@@ -11,13 +11,13 @@ app = modal.App(APP_NAME)
 
 # Volume for caching models across function calls
 volume = modal.Volume.from_name("frame-lab-models", create_if_missing=True)
-CHECKPOINTS_DIR = "/root/checkpoints"
-HF_CACHE_DIR = "/root/.cache/huggingface"
+CACHE_DIR = "/models_cache"
 
 # Base image with system deps and PyTorch
 worker_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("git", "wget", "ffmpeg", "ca-certificates")
+    .env({"HF_HOME": f"{CACHE_DIR}/huggingface"})
     .pip_install(
         "torch>=2.5.1",
         "transformers==4.57.6",
@@ -43,8 +43,7 @@ worker_image = (
     gpu="L4",
     timeout=1800,  # 30 minutes
     volumes={
-        CHECKPOINTS_DIR: volume,
-        HF_CACHE_DIR: volume,
+        CACHE_DIR: volume,
     },
 )
 def process_job(controller_url: str, job_id: str, token: str):
@@ -70,7 +69,11 @@ def process_job(controller_url: str, job_id: str, token: str):
     response.raise_for_status()
 
     # Step 2: Ensure models are in volume
-    ckpt = Path(CHECKPOINTS_DIR)
+    cache_path = Path(CACHE_DIR)
+    ckpt = cache_path / "checkpoints"
+    ckpt.mkdir(parents=True, exist_ok=True)
+    (cache_path / "huggingface").mkdir(parents=True, exist_ok=True)
+
     sam_pt = ckpt / "sam2.1_hiera_large.pt"
     if not sam_pt.exists():
         print("Mengunduh SAM 2.1 checkpoint ke Volume...")
@@ -90,6 +93,7 @@ def process_job(controller_url: str, job_id: str, token: str):
         "WORKER_TOKEN": token,
         "SAM_CKPT": str(sam_pt),
         "FACE_MODEL": str(ckpt / "face_landmarker.task"),
+        "HF_HOME": f"{CACHE_DIR}/huggingface",
     }
 
     # Clone or use local repo directory
