@@ -160,8 +160,16 @@ def run_job(jid: str, p: Params):
                 cv2.imwrite(str(mdir / f"{i:05d}.png"), blank if m is None else m)
             pc.run(["ffmpeg", "-y", "-framerate", str(FPS), "-i", str(mdir / "%05d.png"),
                     "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(d / "mask_preview.mp4")])
-            shutil.rmtree(comp, ignore_errors=True)
             shutil.rmtree(mdir, ignore_errors=True)
+            ddir = d / "depth_png"
+            ddir.mkdir(exist_ok=True)
+            cmap = getattr(cv2, f"COLORMAP_{p.colormap.upper()}")
+            for i, dmap in enumerate(depth):
+                cv2.imwrite(str(ddir / f"{i:05d}.png"), cv2.applyColorMap(dmap, cmap))
+            pc.run(["ffmpeg", "-y", "-framerate", str(FPS), "-i", str(ddir / "%05d.png"),
+                    "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(d / "depth_preview.mp4")])
+            shutil.rmtree(ddir, ignore_errors=True)
+            shutil.rmtree(comp, ignore_errors=True)
             del depth, masks
             if CUDA:
                 torch.cuda.empty_cache()

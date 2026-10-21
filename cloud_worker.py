@@ -96,8 +96,10 @@ def main():
         if result['state'] != 'done':
             raise RuntimeError(result.get('error', 'Pemrosesan gagal.'))
         result['stage'] = 'Mengirim hasil ke VPS'
-        for name in ['composite.mp4', 'mask_preview.mp4']:
-            upload(root / name)
+        for name in ['composite.mp4', 'mask_preview.mp4', 'depth_preview.mp4']:
+            p = root / name
+            if p.exists():
+                upload(p)
         if task['params']['face_guidance']:
             upload(root / 'face-tracking.json')
         call('POST', '/complete', json={})

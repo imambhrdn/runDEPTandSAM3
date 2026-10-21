@@ -21,7 +21,7 @@ from starlette.concurrency import run_in_threadpool
 from .core import Engine, Settings, Store, Vast
 from .modal_backend import ModalSettings, ModalClient, ModalEngine
 
-ARTIFACTS = {'composite.mp4', 'mask_preview.mp4', 'face-tracking.json'}
+ARTIFACTS = {'composite.mp4', 'mask_preview.mp4', 'depth_preview.mp4', 'face-tracking.json'}
 
 
 def probe(path):

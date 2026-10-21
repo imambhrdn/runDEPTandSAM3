@@ -34,7 +34,7 @@ const {chromium} = require('playwright-core');
       }
       assert.equal(request.method(), 'GET', 'UI preview must never start a paid job');
       const data = endpoint === '/api/config' ? {machine_id: 0, max_price: .099, min_vram: 12, max_minutes: 45, max_upload_mb: 250, auto_destroy: false} : [];
-      if (!['/api/config', '/api/jobs'].includes(endpoint)) unexpected.push(endpoint);
+      if (!['/api/config', '/api/jobs'].includes(endpoint) && !endpoint.includes('/files/')) unexpected.push(endpoint);
       await route.fulfill({json: data});
     });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
@@ -97,6 +97,17 @@ const {chromium} = require('playwright-core');
     assert.equal(await page.locator('#job-error').innerText(), 'Contoh error');
     assert.equal(await page.locator('#cancel').isVisible(), false);
     assert(await page.locator('#face').isDisabled());
+    await page.evaluate(() => render({
+      id: 'job-12345678', state: 'done', stage: 'Selesai',
+      artifacts: {
+        'composite.mp4': '/api/jobs/job-12345678/files/composite.mp4',
+        'mask_preview.mp4': '/api/jobs/job-12345678/files/mask_preview.mp4',
+        'face-tracking.json': '/api/jobs/job-12345678/files/face-tracking.json'
+      }
+    }));
+    assert.equal(await page.locator('.output-card video').count(), 2);
+    assert.equal(await page.locator('.placeholder-tag.ready').count(), 3);
+    assert((await page.locator('.outputs-section .section-heading .small').innerText()).includes('job-1234'));
     await page.evaluate(() => { document.querySelector('#result').hidden = true; });
     if (process.env.SCREENSHOT_PATH) await page.screenshot({path: process.env.SCREENSHOT_PATH, fullPage: true});
     for (const width of [1440, 1024, 390]) {
