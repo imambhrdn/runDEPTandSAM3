@@ -17,7 +17,7 @@ class ModalSettings:
         self.data.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.app_name = os.getenv('MODAL_APP_NAME', 'frame-lab-modal')
         self.function_name = os.getenv('MODAL_FUNCTION_NAME', 'process_job')
-        self.gpu = os.getenv('MODAL_GPU', 'L4')
+        self.gpu = os.getenv('MODAL_GPU', 'CPU')
         self.max_minutes = int(os.getenv('MODAL_MAX_MINUTES', '30'))
         self.max_upload_mb = int(os.getenv('MAX_UPLOAD_MB', '250'))
         # ponytail: token env validated lazily at first spawn, not at startup, to allow disabled mode without credentials.

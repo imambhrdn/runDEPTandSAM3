@@ -17,6 +17,7 @@ Pemakaian (di Vast, GPU):
 setelah resize; lihat frames/00000.jpg kalau perlu).
 """
 import argparse
+import contextlib
 import shutil
 import subprocess
 import sys
@@ -71,7 +72,8 @@ def compute_masks(frames_dir, n, point, sam_cfg, sam_ckpt, device):
 
     predictor = build_sam2_video_predictor(sam_cfg, sam_ckpt, device=device)
     masks = [None] * n
-    with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+    autocast_ctx = torch.autocast("cuda", dtype=torch.bfloat16) if str(device).startswith("cuda") else contextlib.nullcontext()
+    with torch.inference_mode(), autocast_ctx:
         state = predictor.init_state(video_path=str(frames_dir))
         predictor.add_new_points_or_box(
             state, frame_idx=0, obj_id=1,

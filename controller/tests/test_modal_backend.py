@@ -67,6 +67,7 @@ class ModalBackendTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         import os
         os.environ['MODAL_ENABLED'] = '1'
+        os.environ['MODAL_GPU'] = 'CPU'
         self.settings = Settings('https://gpu.example.com', 'private-key', 'long-password-1234',
                                  'a' * 40, data=Path(self.tmp.name), max_upload_mb=1)
         self.vast = FakeVast()
@@ -87,6 +88,7 @@ class ModalBackendTests(unittest.TestCase):
         self.modal_store.db.close()
         import os
         os.environ.pop('MODAL_ENABLED', None)
+        os.environ.pop('MODAL_GPU', None)
         self.tmp.cleanup()
 
     def upload(self):
@@ -117,7 +119,7 @@ class ModalBackendTests(unittest.TestCase):
         data = response.json()
         self.assertEqual(data['provider'], 'modal')
         self.assertTrue(data['enabled'])
-        self.assertEqual(data['gpu'], 'L4')
+        self.assertEqual(data['gpu'], 'CPU')
 
     def test_modal_page_authenticated(self):
         self.assertEqual(self.worker.get('/modal').status_code, 401)

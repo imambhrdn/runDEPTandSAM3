@@ -3,11 +3,16 @@
 Models are cached in a Modal Volume so they are downloaded only once.
 Never deployed or executed without explicit authorization.
 """
+import os
 from pathlib import Path
 import modal
 
 APP_NAME = "frame-lab-modal"
 app = modal.App(APP_NAME)
+
+# Set MODAL_GPU=L4 if a payment method is attached to your Modal account.
+# Without payment method, defaults to None (CPU 4-core, 16GB RAM) to avoid billing block.
+GPU_TYPE = os.getenv("MODAL_GPU") or None
 
 # Volume for caching models across function calls
 volume = modal.Volume.from_name("frame-lab-models", create_if_missing=True)
@@ -40,7 +45,9 @@ worker_image = (
 
 @app.function(
     image=worker_image,
-    gpu="L4",
+    gpu=GPU_TYPE,
+    cpu=4.0,
+    memory=16384,  # 16 GiB RAM
     timeout=1800,  # 30 minutes
     volumes={
         CACHE_DIR: volume,
