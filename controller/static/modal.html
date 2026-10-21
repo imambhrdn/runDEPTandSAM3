@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c0f12">
+  <title>Frame Lab · Modal Studio</title>
+  <link rel="stylesheet" href="/static/modal.css?v=20261021">
+</head>
+<body>
+  <svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#182e36"/><stop offset="1" stop-color="#acbbae"/></linearGradient>
+    <linearGradient id="water" x2="0.7" y2="1"><stop stop-color="#708f85"/><stop offset="1" stop-color="#172d2c"/></linearGradient>
+    <linearGradient id="depth" x2="0.4" y2="1"><stop stop-color="#622363"/><stop offset=".45" stop-color="#f16e59"/><stop offset="1" stop-color="#f8df84"/></linearGradient>
+    <symbol id="landscape" viewBox="0 0 640 480">
+      <path fill="url(#sky)" d="M0 0h640v480H0z"/><circle cx="395" cy="95" r="42" fill="#ebedc2" opacity=".55"/>
+      <path fill="#4c6d68" d="M0 252 86 137l67 59L280 53l93 158 65-84 112 140 90-96v309H0Z"/>
+      <path fill="#294c45" d="m0 173 87 109 77-44 86 92 80-104 72 72 90-78 148 32v228H0Z"/>
+      <path fill="#19382f" d="m0 247 73 63 84-18 113 78 91-19 100-56 88 12 91-85v258H0Z"/>
+      <path fill="url(#water)" d="m364 296 39 2-47 49 49 44-10 36 96 53H105l139-65 69-29-5-33Z"/>
+      <g fill="none" stroke="#acc0a3" opacity=".3"><path d="m326 357 43 0m-77 42h83m-157 51h191m-96-27h49"/></g>
+      <g fill="#14291f"><path d="M0 0h26l15 480H0Zm610 0h30v480h-51Z"/><path d="M10 41 146 8 61 87l107-16L35 131l67 14-73 27Zm620-6L505 8l71 74-115-27 137 85-81 6 103 35Z"/></g>
+      <g fill="#496544"><path d="m0 480 14-136 26 56 32-85 13 110 67-46-51 101Zm640 0-24-140-28 62-26-79-13 113-69-54 49 98Z"/></g>
+      <g fill="#cca46f"><path d="m37 408-17-42 29 20 9-43 9 44 35-17-24 42Z"/><path d="m569 439-25-39 35 14 3-44 18 37 28-21-14 46Z"/></g>
+      <ellipse cx="308" cy="443" rx="32" ry="8" fill="#11251e" opacity=".7"/>
+      <circle cx="308" cy="307" r="15" fill="#b8997c"/><path fill="#d8c595" d="m296 324-16 16-11 47 11 4 14-34 2 45h27l-1-45 13 30 11-5-17-43-12-15Z"/>
+      <path fill="#28392f" d="m296 398-5 44h12l7-32 5 32h12l-4-44Z"/>
+    </symbol>
+    <symbol id="depth-scene" viewBox="0 0 640 480">
+      <path fill="url(#depth)" d="M0 0h640v480H0z"/><path fill="#c64e70" d="M0 252 86 137l67 59L280 53l93 158 65-84 112 140 90-96v309H0Z"/>
+      <path fill="#ec8b65" d="m0 173 87 109 77-44 86 92 80-104 72 72 90-78 148 32v228H0Z"/>
+      <path fill="#ffd78b" d="m0 247 73 63 84-18 113 78 91-19 100-56 88 12 91-85v258H0Z"/>
+      <path fill="#ffe9ad" d="m364 296 39 2-47 49 49 44-10 36 96 53H105l139-65 69-29-5-33Z"/>
+      <path fill="#55827b" d="M0 0h26l15 480H0Zm610 0h30v480h-51Z"/><path fill="#749d87" d="M10 41 146 8 61 87l107-16L35 131l67 14-73 27Zm620-6L505 8l71 74-115-27 137 85-81 6 103 35Z"/>
+      <circle cx="308" cy="307" r="15" fill="#f5f5b9"/><path fill="#f5f5b9" d="m296 324-16 16-11 47 11 4 14-34 2 41-5 44h12l7-32 5 32h12l-4-44-1-41 13 30 11-5-17-43-12-15Z"/>
+    </symbol>
+    <symbol id="mesh" viewBox="0 0 200 230"><g fill="none" stroke="currentColor" stroke-width="1"><path d="M100 20 60 30 35 65 30 110 45 155 70 190 100 210 130 190 155 155 170 110 165 65 140 30Z M100 20V210 M60 30l40 35 40-35 M35 65h130 M30 110l35-15 35 15 35-15 35 15 M45 155l55-20 55 20 M70 190l30-30 30 30 M35 65l30 30 35-30 35 30 30-30 M30 110l70 25 70-25 M65 95l5 45 30 20 30-20 5-45 M65 95l35 40 35-40 M100 65l-15 65 15 5 15-5Z"/><path d="m48 96 15-9 18 9-18 8Zm71 0 18-9 15 9-15 8ZM75 160l25-7 25 7-25 13Z"/></g></symbol>
+  </defs></svg>
+  <div class="workspace">
+    <header class="topbar">
+      <a class="brand" href="/modal"><span class="brand-icon" aria-hidden="true">▱</span>frame<span>lab</span><small>MODAL STUDIO</small></a>
+      <div class="header-right"><a class="vast-link" href="/">Buka Vast.ai ↗</a><div class="balance"><span>Saldo Modal <small>PLACEHOLDER</small></span><strong>US$ —</strong></div></div>
+    </header>
+    <main>
+      <div class="heading"><div><p class="eyebrow">DEPTH · SEGMENTATION · EXPRESSION</p><h1>A different view.<span> Every frame.</span></h1><p>Pilih objek dalam video. Lihat kedalaman, mask, dan ekspresinya dalam satu tempat.</p></div><span class="engine-badge"><i></i>Modal <span>/ belum terhubung</span></span></div>
+      <div class="notice"><span class="notice-tag">UI PREVIEW</span><p>File hanya dibaca di browser. Hasil kanan adalah ilustrasi, bukan output AI. Tidak ada upload atau pemakaian GPU.</p></div>
+      <div class="studio">
+        <div class="studio-bar"><strong>Single video workspace</strong><span>Maks. 30 detik <b>·</b> Output target 24 fps / 960 px</span></div>
+        <div class="panels">
+          <section class="panel" aria-labelledby="source-title">
+            <div class="panel-bar"><h2 id="source-title"><span>01</span> Sumber & pilihan objek</h2><span id="source-badge" class="badge">CONTOH</span></div>
+            <div class="media-area">
+              <div id="sample-source" class="sample-source"><svg viewBox="0 0 640 480" aria-hidden="true"><use href="#landscape"/></svg><div class="sample-caption">Your next frame starts here.<small>Pilih video untuk menggeser timeline dan menandai objek.</small></div></div>
+              <div id="selection-stage" class="selection-stage" role="button" tabindex="0" aria-label="Pilih objek. Klik gambar, atau Enter untuk memilih tengah dan tombol panah untuk menggeser titik." hidden><canvas id="source-canvas"></canvas><span id="selection-mark" hidden></span></div>
+            </div>
+            <video id="source-video" muted playsinline preload="auto" hidden></video>
+            <div class="timeline"><label for="source-timeline">Timeline objek</label><output id="source-time" for="source-timeline">0.00 / 0.00 dtk</output><input id="source-timeline" type="range" min="0" max="0" step="0.01" value="0" disabled aria-label="Timeline pemilihan objek"><button id="reset-frame" type="button" disabled aria-label="Kembali ke frame pertama">↤</button></div>
+            <div class="source-actions"><label class="file-button" for="source-file">＋ Pilih video<input id="source-file" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.m4v"></label><span id="source-info">MP4, MOV, WebM, MKV · maks. 250 MB</span></div>
+            <p id="selection-info" class="selection-info" role="status">Belum ada objek dipilih.</p>
+          </section>
+          <section class="panel" aria-labelledby="output-title">
+            <div class="panel-bar"><h2 id="output-title"><span>02</span> Hasil & perbandingan</h2><span class="badge lime">ILUSTRASI</span></div>
+            <div id="output-tabs" class="output-tabs" role="tablist" aria-label="Jenis hasil">
+              <button type="button" id="tab-depth" role="tab" aria-selected="true" aria-controls="comparison-panel" data-mode="depth">Depth</button>
+              <button type="button" id="tab-sam" role="tab" aria-selected="false" aria-controls="comparison-panel" tabindex="-1" data-mode="sam">SAM</button>
+              <button type="button" id="tab-composite" role="tab" aria-selected="false" aria-controls="comparison-panel" tabindex="-1" data-mode="composite">Composite</button>
+              <button type="button" id="tab-face" role="tab" aria-selected="false" aria-controls="comparison-panel" tabindex="-1" data-mode="face">Face</button>
+            </div>
+            <div id="comparison-panel" role="tabpanel" aria-labelledby="tab-depth">
+              <div id="comparison" class="comparison" data-mode="depth" style="--split:50%">
+                <svg class="compare-original" viewBox="0 0 640 480" aria-hidden="true"><use href="#landscape"/></svg>
+                <canvas id="compare-canvas" hidden></canvas>
+                <div class="compare-result">
+                  <svg class="depth-art" viewBox="0 0 640 480" aria-hidden="true"><use href="#depth-scene"/></svg>
+                  <svg class="sam-art" viewBox="0 0 640 480" aria-hidden="true"><path fill="#0a130f" d="M0 0h640v480H0z"/><circle cx="308" cy="307" r="15" fill="#c4f568"/><path fill="#c4f568" d="m296 324-16 16-11 47 11 4 14-34 2 41-5 44h12l7-32 5 32h12l-4-44-1-41 13 30 11-5-17-43-12-15Z"/></svg>
+                  <svg class="composite-art" viewBox="0 0 640 480" aria-hidden="true"><use href="#landscape"/><circle cx="308" cy="307" r="15" fill="#ffd78b"/><path fill="#ee8a6b" d="m296 324-16 16-11 47 11 4 14-34 2 41-5 44h12l7-32 5 32h12l-4-44-1-41 13 30 11-5-17-43-12-15Z"/></svg>
+                  <div class="face-art"><svg viewBox="0 0 200 230" aria-hidden="true"><use href="#mesh"/></svg></div>
+                </div>
+                <span class="compare-label original-label" id="original-label">CONTOH ASLI</span><span class="compare-label result-label">HASIL CONTOH</span>
+                <div class="split-line" aria-hidden="true"><span>‹ ›</span></div>
+              </div>
+              <div class="comparison-controls"><label for="compare-slider">Asli / ilustrasi</label><input id="compare-slider" type="range" min="0" max="100" value="50" aria-label="Pembanding asli dan ilustrasi"><output id="compare-value" for="compare-slider">50%</output></div>
+              <p id="output-description" class="output-description">Depth Anything V2 · ilustrasi peta kedalaman, bukan hasil model.</p>
+            </div>
+          </section>
+        </div>
+        <section class="settings" aria-label="Pengaturan pemrosesan">
+          <label class="setting">Colormap<select id="colormap"><option value="inferno">Inferno</option><option value="turbo">Turbo</option><option value="viridis">Viridis</option><option value="jet">Jet</option></select><small>Parameter proses; ilustrasi tidak berubah.</small></label>
+          <label class="setting">Dilate <span><input id="dilate" type="number" min="0" max="30" value="6"> px</span><small>Perluas area mask subjek.</small></label>
+          <label class="setting">Feather <span><input id="feather" type="number" min="0" max="15" value="3"> px</span><small>Haluskan batas mask.</small></label>
+          <div class="setting face-setting"><label><input id="face-guidance" type="checkbox" checked> Face Guidance</label><small>Wajah tidak terlihat: lewati mesh, lanjutkan video.</small></div>
+        </section>
+        <button id="process" class="process" type="button" disabled>Proses di Modal <span>↗</span></button>
+        <p class="connection-note">Integrasi Modal belum aktif. Pengaturan dan pilihan frame belum dikirim ke worker.</p>
+        <p id="error" class="error" role="alert"></p>
+      </div>
+      <section class="execution" aria-labelledby="execution-title"><div class="execution-heading"><h2 id="execution-title">Execution</h2><span class="badge">BELUM DIJALANKAN</span></div><ol class="steps"><li><span>01</span>Persiapan</li><li><span>02</span>Depth</li><li><span>03</span>SAM + Face</li><li><span>04</span>Composite</li></ol><div class="execution-bottom"><p>Log akan muncul setelah integrasi aktif. Belum ada hasil untuk diunduh.</p><span>GPU: belum dialokasikan</span></div></section>
+      <footer><span>FRAME LAB <b>/</b> MODAL WORKSPACE</span><span>Vast.ai tetap terpisah. Output target MP4, tanpa audio.</span></footer>
+    </main>
+  </div>
+  <script src="/static/modal.js?v=20261021"></script>
+</body>
+</html>

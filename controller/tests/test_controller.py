@@ -295,6 +295,17 @@ class WebTests(unittest.TestCase):
         self.client.headers.pop('X-Controller')
         self.assertEqual(self.client.post('/api/upload').status_code, 403)
 
+    def test_modal_page_is_authenticated_and_separate_from_vast(self):
+        self.assertEqual(self.worker.get('/modal').status_code, 401)
+        response = self.client.get('/modal')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Modal Studio', response.text)
+        self.assertIn('/static/modal.js', response.text)
+        self.assertNotIn('/static/app.js', response.text)
+        self.assertIn('/static/app.js', self.client.get('/').text)
+        self.assertEqual(self.vast.creates, 0)
+        self.assertFalse(self.store.all())
+
     def test_upload_does_not_rent_or_expose_secrets(self):
         job = self.upload()
         self.assertNotIn('token', job)
