@@ -61,7 +61,8 @@ class Params(BaseModel):
 def create_app(settings=None, vast=None, run_scheduler=True):
     settings = settings or Settings.from_env()
     store = Store(settings.data)
-    engine = Engine(store, vast or Vast(settings), settings)
+    vast = vast or Vast(settings)
+    engine = Engine(store, vast, settings)
     stop = threading.Event()
 
     def schedule():
@@ -404,9 +405,14 @@ def create_app(settings=None, vast=None, run_scheduler=True):
 
     @app.get('/api/config')
     def config():
+        balance = None
+        try:
+            balance = vast.balance()
+        except Exception:
+            pass
         return {'machine_id': settings.machine_id, 'max_price': settings.max_price, 'min_vram': settings.min_vram,
                 'max_minutes': settings.max_minutes, 'max_upload_mb': settings.max_upload_mb,
-                'auto_destroy': settings.auto_destroy}
+                'auto_destroy': settings.auto_destroy, 'balance': balance}
 
     @app.get('/api/jobs')
     def jobs():

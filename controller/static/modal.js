@@ -1,7 +1,7 @@
 'use strict';
 const $ = selector => document.querySelector(selector);
 const video = $('#source-video');
-let sourceUrl = null, ready = false, point = null;
+let sourceUrl = null, ready = false, point = null, currentFile = null;
 
 async function api(path, options = {}) {
   const response = await fetch('/modal-api' + path, {...options, headers: {'X-Controller': '1', ...options.headers}});

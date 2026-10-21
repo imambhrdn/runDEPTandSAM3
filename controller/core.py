@@ -211,6 +211,20 @@ class Vast:
         if result is not None and not result.get('success'):
             raise RuntimeError('Vast.ai belum mengonfirmasi penghapusan instance.')
 
+    def balance(self):
+        now = time.time()
+        if hasattr(self, '_balance_time') and getattr(self, '_cached_balance', None) is not None and now - self._balance_time < 30:
+            return self._cached_balance
+        try:
+            result = self.request('GET', '/api/v0/users/current/')
+            if result and 'credit' in result:
+                self._cached_balance = round(float(result['credit']), 2)
+                self._balance_time = now
+                return self._cached_balance
+        except Exception:
+            pass
+        return getattr(self, '_cached_balance', None)
+
 
 class Engine:
     def __init__(self, store, vast, settings, clock=time.time):

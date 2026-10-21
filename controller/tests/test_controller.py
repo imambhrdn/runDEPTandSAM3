@@ -47,6 +47,9 @@ class FakeVast:
         self.destroyed.append(iid)
         self.rows.pop(iid, None)
 
+    def balance(self):
+        return 1.72
+
 
 class EngineTests(unittest.TestCase):
     def setUp(self):

@@ -38,6 +38,9 @@ function render(job) {
   $('#job-error').textContent = job.error || '';
   $('#cleanup-error').textContent = job.scheduler_error ? `Pemeriksaan/pembersihan perlu dicoba lagi: ${job.scheduler_error}. Periksa juga console Vast.ai.` : '';
   $('#cancel').hidden = ['ready', 'done', 'failed', 'cancelled', 'cleanup'].includes(job.state);
+  $('#gpu-dot').className = `status-dot ${['booting', 'running'].includes(job.state) ? '' : job.state === 'done' ? '' : 'neutral'}`;
+  updateLivePipeline(job);
+  updateArtifactCards(job);
   const signature = JSON.stringify(job.artifacts);
   if (signature !== lastArtifacts) {
     lastArtifacts = signature;
@@ -127,6 +130,55 @@ async function poll() {
   setTimeout(poll, 4000);
 }
 let demoTimer = null, demoStep = -1;
+function updateLivePipeline(job) {
+  if (demoTimer !== null) return;
+  const s = job.state, stage = job.stage || '';
+  let stepIdx = -1;
+  if (s === 'done') {
+    stepIdx = 4;
+  } else if (stage.includes('Menempel') || stage.includes('Menyimpan') || stage.includes('Mengirim') || stage.includes('Composite')) {
+    stepIdx = 3;
+  } else if (stage.includes('Mask') || stage.includes('SAM') || stage.includes('ekspresi') || stage.includes('wajah')) {
+    stepIdx = 2;
+  } else if (stage.includes('Depth')) {
+    stepIdx = 1;
+  } else if (['creating', 'booting'].includes(s) || stage.includes('Persiapan') || stage.includes('ekstrak') || stage.includes('Menyewa') || stage.includes('Menyiapkan')) {
+    stepIdx = 0;
+  }
+  if (stepIdx >= 0) {
+    document.querySelectorAll('.pipeline-step').forEach((el, idx) => {
+      el.classList.toggle('active', idx === stepIdx && s !== 'done' && s !== 'failed');
+      el.classList.toggle('done', idx < stepIdx || s === 'done');
+      const stateEl = el.querySelector('.step-state');
+      if (s === 'done' || idx < stepIdx) stateEl.textContent = 'Selesai';
+      else if (idx === stepIdx) stateEl.textContent = s === 'failed' ? 'Gagal' : 'Aktif';
+      else stateEl.textContent = 'Menunggu';
+    });
+    $('#demo-counter').textContent = `${Math.min(4, Math.max(0, stepIdx + (s === 'done' ? 0 : 1)))} / 4 tahap`;
+    $('#demo-status').textContent = s === 'done' ? 'Proses selesai' : s === 'failed' ? 'Proses terhenti' : `Proses aktual · ${job.stage || job.state}`;
+  }
+}
+function updateArtifactCards(job) {
+  const artifacts = job.artifacts || {};
+  const samBtn = document.querySelector('[data-preview="sam"]');
+  const compBtn = document.querySelector('[data-preview="composite"]');
+  const faceBtn = document.querySelector('[data-preview="face"]');
+  if (samBtn) {
+    samBtn.innerHTML = artifacts['mask_preview.mp4']
+      ? 'Lihat mask video <span aria-hidden="true">▷</span>'
+      : 'Lihat preview <span aria-hidden="true">↗</span>';
+  }
+  if (compBtn) {
+    compBtn.innerHTML = artifacts['composite.mp4']
+      ? 'Lihat video composite <span aria-hidden="true">▷</span>'
+      : 'Lihat preview <span aria-hidden="true">↗</span>';
+  }
+  if (faceBtn) {
+    faceBtn.innerHTML = artifacts['face-tracking.json']
+      ? 'Laporan tracking wajah <span aria-hidden="true">↓</span>'
+      : 'Lihat preview <span aria-hidden="true">↗</span>';
+  }
+}
 function showDemoStep() {
   const labels = ['Menyiapkan frame contoh', 'Membaca kedalaman tiap frame', 'Memisahkan subjek dari latar', 'Menyusun composite akhir'];
   document.querySelectorAll('.pipeline-step').forEach((element, index) => {
@@ -140,21 +192,46 @@ function showDemoStep() {
 $('#demo').addEventListener('click', () => {
   if (demoTimer !== null) {
     clearInterval(demoTimer); demoTimer = null; demoStep = -1;
-    $('#demo').textContent = 'Putar simulasi ▷'; showDemoStep(); return;
+    $('#demo').textContent = 'Putar simulasi ▷';
+    if (current) updateLivePipeline(current);
+    else showDemoStep();
+    return;
   }
   demoStep = 0; showDemoStep(); $('#demo').textContent = 'Hentikan simulasi □';
   demoTimer = setInterval(() => {
     demoStep++; showDemoStep();
     if (demoStep === 4) {
       clearInterval(demoTimer); demoTimer = null; $('#demo').textContent = 'Ulangi simulasi ↺';
+      if (current) setTimeout(() => updateLivePipeline(current), 2000);
     }
   }, 1800);
 });
 document.querySelectorAll('[data-preview]').forEach(button => {
   button.addEventListener('click', () => {
+    const mode = button.dataset.preview;
     const card = button.closest('.output-card');
     $('#preview-title').textContent = card.querySelector('h3').textContent;
-    $('#preview-content').replaceChildren(card.querySelector('.preview-image').cloneNode(true));
+    const artifacts = current?.artifacts || {};
+    if (mode === 'composite' && artifacts['composite.mp4']) {
+      const vid = document.createElement('video');
+      vid.src = artifacts['composite.mp4']; vid.controls = true; vid.autoplay = true; vid.playsInline = true;
+      vid.style.width = '100%'; vid.style.maxHeight = '420px'; vid.style.borderRadius = '8px';
+      $('#preview-content').replaceChildren(vid);
+    } else if (mode === 'sam' && artifacts['mask_preview.mp4']) {
+      const vid = document.createElement('video');
+      vid.src = artifacts['mask_preview.mp4']; vid.controls = true; vid.autoplay = true; vid.playsInline = true;
+      vid.style.width = '100%'; vid.style.maxHeight = '420px'; vid.style.borderRadius = '8px';
+      $('#preview-content').replaceChildren(vid);
+    } else if (mode === 'face' && artifacts['face-tracking.json']) {
+      const p = document.createElement('p');
+      p.textContent = current?.warning ? `Perhatian: ${current.warning}` : 'Tracking ekspresi wajah berhasil dipetakan.';
+      const a = document.createElement('a');
+      a.href = artifacts['face-tracking.json']; a.className = 'button'; a.download = 'face-tracking.json';
+      a.textContent = 'Unduh face-tracking.json';
+      $('#preview-content').replaceChildren(p, a);
+    } else {
+      $('#preview-content').replaceChildren(card.querySelector('.preview-image').cloneNode(true));
+    }
     $('#preview-dialog').showModal();
   });
 });
@@ -203,6 +280,12 @@ $('#source-video').addEventListener('error', () => {
 window.addEventListener('pagehide', () => { if (sourceUrl) URL.revokeObjectURL(sourceUrl); });
 api('/api/config').then(data => {
   config = data;
+  if (typeof data.balance === 'number') {
+    $('#balance-val').textContent = `US$ ${data.balance.toFixed(2)}`;
+    $('#balance-sub').textContent = 'SALDO AKTIF';
+  } else {
+    $('#balance-val').textContent = 'US$ —';
+  }
   const vram = data.min_vram === 0 ? 'VRAM tanpa batas minimum' : `VRAM ≥ ${data.min_vram} GB`;
   const target = data.machine_id === 0 ? 'Semua mesin' : `Machine ${data.machine_id}`;
   const cleanup = data.auto_destroy ? `Maksimal ${data.max_minutes} menit sewa` : 'Hapus GPU manual di Vast.ai; biaya terus berjalan meskipun job selesai/gagal atau batas waktu tercapai';
