@@ -9,6 +9,7 @@ services:
     stop_grace_period: 60s
     volumes:
       - jobs:/data
+      - /home/ubuntu/.modal.toml:/home/app/.modal.toml:ro
     networks:
       - app
     logging:
