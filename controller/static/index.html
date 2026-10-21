@@ -1,23 +1,80 @@
 <!doctype html>
 <html lang="id">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Depth + SAM · Pengendali GPU</title>
-<style>
-:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#10151c;color:#eef3f8}body{max-width:960px;margin:auto;padding:30px 20px}h1{font-size:1.8rem}p{line-height:1.6;color:#bdc9d8}section{background:#1a2330;padding:22px;border-radius:14px;margin:20px 0}.row{display:flex;gap:16px;flex-wrap:wrap;align-items:center}button,a.button{background:#54d8bb;color:#09291f;border:0;border-radius:8px;padding:12px 18px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none}button:disabled{opacity:.45;cursor:default}button.cancel{background:#f0ad94}input,select{font:inherit;max-width:100%}input[type=number]{width:65px}label{display:flex;gap:8px;align-items:center;margin:10px 0}.stage{display:inline-block;position:relative;max-width:100%;line-height:0;cursor:crosshair}.stage img{max-width:100%;max-height:60vh}.mark{position:absolute;width:18px;height:18px;border:2px solid #54d8bb;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none}.warning{color:#ffd786}.error{color:#ffb9ad;white-space:pre-wrap}.videos{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}video{width:100%;background:black}a{color:#79dfd1}#jobs button{background:#26364a;color:#eef3f8;margin:4px;padding:8px 12px;font-size:.85rem}[hidden]{display:none!important}small{color:#adbdcf}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0b0d0b">
+  <title>Frame Lab · Depth & SAM</title>
+  <link rel="stylesheet" href="/static/style.css?v=20261020c">
 </head>
 <body>
-<h1>Depth + SAM + Panduan Ekspresi</h1>
-<p>Unggah video dan pilih subjek di VPS. GPU disewa saat kamu mulai proses, lalu dihapus setelah hasil tersimpan dan diperiksa di VPS.</p>
-<p id="limits"></p>
-<section><h2>1. Unggah video</h2><input id="file" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska"><p id="upload-status">Maksimal 30 detik; disarankan mulai dari klip 10 detik.</p></section>
-<section id="pick" hidden><h2>2. Klik subjek</h2><div class="stage" id="stage"><img id="frame" alt="Frame pertama video"><div id="mark" class="mark" hidden></div></div>
-<p id="point">Klik orang yang ingin diproses.</p>
-<div class="row"><label><input id="face" type="checkbox" checked>Panduan ekspresi</label><label>Dilate <input id="dilate" type="number" min="0" max="30" value="6"></label><label>Feather <input id="feather" type="number" min="0" max="15" value="3"></label><label>Warna <select id="colormap"><option>inferno</option><option>turbo</option><option>viridis</option><option>jet</option></select></label></div>
-<button id="start" disabled>Sewa GPU & proses</button><p><small>Instalasi dan unduhan model termasuk waktu sewa. Biaya transfer dapat ditagihkan terpisah oleh Vast.ai.</small></p></section>
-<section id="result" hidden><h2>Status</h2><p id="status"></p><p id="rental"></p><p id="warning" class="warning"></p><p id="job-error" class="error"></p><p id="cleanup-error" class="error"></p><button id="cancel" class="cancel">Batalkan & hapus GPU</button><div class="videos" id="videos"></div><div class="row" id="downloads"></div></section>
-<p id="error" class="error" role="alert"></p>
-<section><h2>Riwayat</h2><div id="jobs"></div><p><small>Hasil tetap berada di VPS setelah GPU dihapus. Batas sewa memerlukan pengendali VPS tetap aktif; saat VPS mati, pembersihan baru dilanjutkan setelah VPS hidup kembali.</small></p></section>
-<script src="/static/app.js"></script>
-</body></html>
+  <svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="depth-gradient" x1="0" y1="1" x2="0.7" y2="0"><stop stop-color="#441081"/><stop offset=".45" stop-color="#dc3977"/><stop offset=".75" stop-color="#ff9a55"/><stop offset="1" stop-color="#ffed9c"/></linearGradient>
+      <symbol id="subject" viewBox="0 0 300 240"><path d="M151 36c14 0 23 10 23 24 0 11-5 20-12 24l4 12 25 10c9 4 15 13 16 24l6 45c1 9-12 12-15 3l-13-43-4 44 10 55h-28l-13-48-10 48h-28l10-58-2-40-14 41c-3 9-16 4-13-5l11-44c3-12 8-18 18-23l22-10 1-11c-9-4-15-14-15-25 0-13 9-23 23-23Z"/></symbol>
+      <symbol id="chip" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v3m6-3v3M9 19v3m6-3v3M2 9h3m-3 6h3m14-6h3m-3 6h3"/></symbol>
+      <symbol id="layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></symbol>
+    </defs>
+  </svg>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="Frame Lab, halaman utama"><span class="brand-mark"><svg><use href="#layers"/></svg></span><span>frame<span class="brand-light">lab</span><small>VIDEO WORKSPACE</small></span></a>
+    <div class="nav-label">WORKSPACE</div>
+    <a class="nav-item selected" href="#workspace" aria-current="page"><svg class="icon"><use href="#layers"/></svg>Studio<span class="nav-tag">01</span></a>
+    <a class="nav-item" href="#outputs"><span class="nav-symbol">▦</span>Output video</a>
+    <a class="nav-item" href="#history"><span class="nav-symbol">↺</span>Riwayat proses</a>
+    <div class="sidebar-bottom"><span class="status-dot"></span>VPS controller<span class="version">v1.0</span><p>Workspace untuk depth, segmentasi,<br>dan composite video.</p></div>
+  </aside>
+  <div class="shell" id="workspace">
+    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong>Video studio</strong></div><div class="topbar-right"><div class="balance-placeholder" aria-label="Saldo Vast.ai belum terhubung"><span>Saldo Vast.ai <small>PLACEHOLDER</small></span><strong>US$ —</strong></div><span class="avatar" aria-label="Imam">IM</span></div></header>
+    <main>
+      <div class="page-heading"><div><div class="eyebrow"><span></span>MAKE EVERY FRAME COUNT</div><h1>Your video. <span>A new dimension.</span></h1><p>Ekstrak kedalaman, pisahkan subjek, dan susun hasil dalam satu workspace.</p></div><a class="button secondary" href="#history"><span aria-hidden="true">↺</span> Riwayat proses</a></div>
+      <div class="preview-notice"><span class="notice-icon" aria-hidden="true">✧</span><div><strong>Preview tampilan studio</strong><span>Visual Depth & SAM masih placeholder. Simulasi tidak menyewa GPU atau memproses video.</span></div><span class="outline-pill">UI PREVIEW</span></div>
+      <div class="workspace-grid">
+        <div class="main-column">
+          <section class="panel source-panel" aria-labelledby="source-title">
+            <div class="panel-heading"><div class="heading-with-number"><span class="step-number">01</span><h2 id="source-title">Sumber video</h2></div><span class="muted small">Mulai dari satu klip.</span></div>
+            <label class="upload-zone" for="file"><input id="file" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska"><span class="upload-icon" aria-hidden="true">↥</span><strong>Pilih video untuk mulai</strong><span>Seret video ke area ini atau <b>pilih file</b></span><small>MP4, MOV, WebM, MKV <span>·</span> Maks. 30 detik</small></label>
+            <p id="upload-status" class="upload-status" role="status">Klip 10 detik disarankan untuk proses pertama. Belum ada GPU yang disewa.</p>
+            <div class="face-setting"><label class="check-label"><input id="face" type="checkbox" checked disabled>Face Guidance <span class="outline-pill">MESH WAJAH</span></label><p>Wajah tidak terlihat: lewati mesh, lanjutkan output video.</p><small id="face-help">Unggah video dan pilih job siap proses untuk mengubah pengaturan.</small></div>
+            <div id="pick" hidden>
+              <div class="selection-heading"><strong>Pilih subjek</strong><span class="small muted">Geser timeline, lalu klik objek pada gambar.</span></div>
+              <div class="stage" id="stage" role="button" tabindex="0" aria-label="Pilih subjek. Klik gambar, atau gunakan tombol panah dan Enter."><img id="frame" alt="Frame pertama video untuk memilih subjek"><video id="source-video" playsinline muted preload="auto" aria-label="Frame video untuk memilih objek" hidden></video><div id="mark" class="mark" hidden></div></div>
+              <div class="timeline-controls"><output id="selection-time" for="selection-timeline">0.0 / 0.0 dtk</output><input id="selection-timeline" type="range" min="0" max="0" step="0.01" value="0" aria-label="Timeline pemilihan objek" disabled><button id="first-frame" type="button" disabled>Frame pertama</button></div>
+              <p id="selection-help" class="small muted">Upload ulang video untuk mengaktifkan timeline lokal. Worker tetap memakai frame pertama.</p>
+              <p id="point" class="small muted">Klik orang yang ingin diproses. Keyboard: Enter memilih tengah, panah menggeser titik.</p>
+              <div class="settings-row"><label>Dilate <input id="dilate" type="number" min="0" max="30" value="6"></label><label>Feather <input id="feather" type="number" min="0" max="15" value="3"></label><label>Colormap <select id="colormap"><option>inferno</option><option>turbo</option><option>viridis</option><option>jet</option></select></label></div>
+              <div class="start-row"><button id="start" disabled>Mulai proses di GPU <span aria-hidden="true">↗</span></button><small>Memulai proses akan menyewa GPU. Instalasi, model, dan transfer dapat menambah biaya.</small></div>
+            </div>
+          </section>
+          <section class="panel pipeline-panel" aria-labelledby="pipeline-title">
+            <div class="panel-heading"><div class="heading-with-number"><span class="step-number">02</span><h2 id="pipeline-title">Processing pipeline</h2></div><button class="text-button" id="demo" type="button">Putar simulasi <span aria-hidden="true">▷</span></button></div>
+            <div class="pipeline" id="pipeline" aria-label="Simulasi tahapan proses">
+              <div class="pipeline-step" data-step="0"><span class="pipeline-node">01</span><strong>Persiapan</strong><small>Ekstraksi frame</small><span class="step-state">Menunggu</span></div>
+              <div class="pipeline-step" data-step="1"><span class="pipeline-node">02</span><strong>Depth Anything</strong><small>Estimasi kedalaman</small><span class="step-state">Menunggu</span></div>
+              <div class="pipeline-step" data-step="2"><span class="pipeline-node">03</span><strong>SAM segmentation</strong><small>Isolasi subjek</small><span class="step-state">Menunggu</span></div>
+              <div class="pipeline-step" data-step="3"><span class="pipeline-node">04</span><strong>Composite</strong><small>Render video akhir</small><span class="step-state">Menunggu</span></div>
+            </div>
+            <div class="pipeline-footer"><span id="demo-status" role="status">Simulasi visual · belum ada proses berjalan</span><span class="mono" id="demo-counter">0 / 4 tahap</span></div>
+          </section>
+        </div>
+        <aside class="right-column" aria-label="Informasi GPU dan sesi">
+          <section class="panel gpu-panel"><div class="panel-heading"><h2>GPU engine</h2><span class="outline-pill">NVIDIA</span></div><div class="gpu-art" aria-hidden="true"><div class="gpu-board"><div class="gpu-fan"></div><div class="gpu-fan second"></div><span class="gpu-pins"></span></div><span class="gpu-halo"></span></div><span class="eyebrow gpu-label">ACCELERATED WORKSPACE</span><h3 id="gpu-name">NVIDIA GPU</h3><p class="small muted" id="gpu-caption">Perangkat muncul setelah GPU dipilih.</p><div class="gpu-specs"><div><span>Memori</span><strong id="gpu-memory">≥ 12 GB <small>filter</small></strong></div><div><span>Runtime</span><strong>PyTorch <small>CUDA 12.4</small></strong></div></div><div class="gpu-state"><span class="status-dot neutral" id="gpu-dot"></span><span id="gpu-state">Menunggu job</span></div></section>
+          <section class="panel session-panel"><div class="panel-heading"><h2>Sesi workspace</h2><svg class="icon muted"><use href="#chip"/></svg></div><div class="detail-row"><span>Mode</span><strong>Cloud GPU</strong></div><div class="detail-row"><span>Output</span><strong>MP4 · tanpa audio</strong></div><div class="detail-row"><span>Pilihan GPU</span><strong id="gpu-selection">Otomatis</strong></div><div class="session-note" id="session-note">Membaca konfigurasi controller…</div><details class="advanced"><summary>Batas & informasi sewa</summary><p id="limits"></p></details></section>
+        </aside>
+      </div>
+      <section class="outputs-section" id="outputs" aria-labelledby="outputs-title"><div class="section-heading"><div><div class="eyebrow">FRAME BY FRAME</div><h2 id="outputs-title">Satu proses. Empat perspektif.</h2></div><span class="muted small">Placeholder visual · bukan hasil pemrosesan</span></div><div class="output-grid">
+        <article class="output-card"><div class="preview-image depth-preview"><span class="preview-label">DEPTH MAP</span><span class="placeholder-tag">PLACEHOLDER</span><svg class="subject-art" viewBox="0 0 300 240" aria-hidden="true"><use href="#subject" fill="url(#depth-gradient)"/></svg><span class="depth-scale"></span><span class="preview-caption">NEAR <span>FAR</span></span></div><div class="output-info"><span class="output-icon">◉</span><div><h3>Depth Anything</h3><p>Kedalaman di setiap frame.</p></div><span class="output-index">01</span></div><button class="preview-button" type="button" data-preview="depth">Lihat preview <span aria-hidden="true">↗</span></button></article>
+        <article class="output-card"><div class="preview-image sam-preview"><span class="preview-label">SUBJECT MASK</span><span class="placeholder-tag">PLACEHOLDER</span><svg class="subject-art" viewBox="0 0 300 240" aria-hidden="true"><use href="#subject" fill="#c4f568"/></svg><span class="selection-box"><i></i><i></i><i></i><i></i></span><span class="subject-label">SUBJECT 01</span></div><div class="output-info"><span class="output-icon">⌗</span><div><h3>SAM segmentation</h3><p>Subjek terpisah dari latar.</p></div><span class="output-index">02</span></div><button class="preview-button" type="button" data-preview="sam">Lihat preview <span aria-hidden="true">↗</span></button></article>
+        <article class="output-card"><div class="preview-image composite-preview"><span class="preview-label">FINAL COMPOSITE</span><span class="placeholder-tag">PLACEHOLDER</span><div class="scene-lines"></div><svg class="subject-art" viewBox="0 0 300 240" aria-hidden="true"><use href="#subject" fill="url(#depth-gradient)"/></svg><span class="play-circle" aria-hidden="true">▷</span><span class="video-bar"><i></i><span>PREVIEW</span></span></div><div class="output-info"><span class="output-icon">▧</span><div><h3>Final composite</h3><p>Depth bertemu video asli.</p></div><span class="output-index">03</span></div><button class="preview-button" type="button" data-preview="composite">Lihat preview <span aria-hidden="true">↗</span></button></article>
+        <article class="output-card"><div class="preview-image face-preview"><span class="preview-label">FACE GUIDANCE</span><span class="placeholder-tag">PLACEHOLDER</span><svg class="face-mesh" viewBox="0 0 200 230" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width=".8"><path d="M100 20 60 30 35 65 30 110 45 155 70 190 100 210 130 190 155 155 170 110 165 65 140 30Z M100 20V210 M60 30l40 35 40-35 M35 65l65 0 65 0 M30 110l35-15 35 15 35-15 35 15 M45 155l55-20 55 20 M70 190l30-30 30 30 M35 65l30 30 35-30 35 30 30-30 M30 110l70 25 70-25 M45 155l25 35 30 20 30-20 25-35 M65 95l5 45 30 20 30-20 5-45 M65 95l35 40 35-40 M100 65l-15 65 15 5 15-5Z"/><path d="m48 96 15-9 18 9-18 8Zm71 0 18-9 15 9-15 8ZM75 160l25-7 25 7-25 13Z" stroke-width="1.5"/></g><g fill="currentColor"><circle cx="100" cy="20" r="2"/><circle cx="65" cy="95" r="2"/><circle cx="135" cy="95" r="2"/><circle cx="100" cy="135" r="2"/><circle cx="100" cy="160" r="2"/><circle cx="100" cy="210" r="2"/></g></svg><span class="subject-label">EXPRESSION MESH</span></div><div class="output-info"><span class="output-icon">◎</span><div><h3>Face Guidance</h3><p>Mesh ekspresi jika wajah terlihat.</p></div><span class="output-index">04</span></div><button class="preview-button" type="button" data-preview="face">Lihat preview <span aria-hidden="true">↗</span></button></article>
+      </div></section>
+      <section class="panel real-results" id="result" hidden aria-labelledby="result-title"><div class="panel-heading"><h2 id="result-title">Status & hasil job aktual</h2><span class="outline-pill">LIVE DATA</span></div><p id="status" role="status"></p><p id="rental" class="small muted"></p><p id="warning" class="warning"></p><p id="job-error" class="error" role="alert"></p><p id="cleanup-error" class="error"></p><button id="cancel" class="cancel">Batalkan job</button><div class="videos" id="videos"></div><div class="downloads" id="downloads"></div></section>
+      <p id="error" class="error" role="alert"></p>
+      <section class="panel history-panel" id="history"><div class="panel-heading"><div class="heading-with-number"><span class="history-icon">↺</span><h2>Riwayat proses</h2></div><span class="muted small">Tersimpan di VPS</span></div><div id="jobs"><p class="empty-history">Memuat riwayat…</p></div></section>
+      <footer class="page-footer"><span>FRAME LAB <span class="footer-divider">/</span> DEPTH & SEGMENTATION STUDIO</span><span>Built for your next frame.</span></footer>
+    </main>
+  </div>
+  <dialog id="preview-dialog" aria-labelledby="preview-title"><div class="dialog-header"><div><span class="eyebrow">VISUAL PLACEHOLDER</span><h2 id="preview-title">Preview</h2></div><button id="close-preview" class="icon-button" aria-label="Tutup preview" type="button">×</button></div><div id="preview-content"></div><p class="small muted">Ilustrasi tampilan saja. Pilih objek melalui timeline pada bagian Sumber video, bukan preview output ini.</p></dialog>
+  <script src="/static/app.js?v=20261020c"></script>
+</body>
+</html>
