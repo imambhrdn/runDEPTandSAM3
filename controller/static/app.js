@@ -1,15 +1,6 @@
 const $ = s => document.querySelector(s);
 let current = null, point = null, lastArtifacts = '', config = null;
 let sourceUrl = null;
-const initialCards = {};
-function initCards() {
-  document.querySelectorAll('.output-card').forEach(card => {
-    const btn = card.querySelector('[data-preview]');
-    const preview = card.querySelector('.preview-image');
-    if (btn && preview) initialCards[btn.dataset.preview] = preview.innerHTML;
-  });
-}
-initCards();
 async function api(path, options = {}) {
   const response = await fetch(path, {...options, headers: {'X-Controller': '1', ...options.headers}});
   const data = await response.json();
@@ -32,9 +23,11 @@ function render(job) {
     $('#point').textContent = 'Klik orang yang ingin diproses. Keyboard: Enter memilih tengah, panah menggeser titik.';
   }
   $('#pick').hidden = job.state !== 'ready';
-  $('#face').disabled = job.state !== 'ready';
-  if (switched && job.params) $('#face').checked = job.params.face_guidance !== false;
-  $('#face-help').textContent = job.state === 'ready' ? 'Aktifkan untuk menambahkan mesh wajah pada hasil.' : 'Pengaturan terkunci untuk job yang sudah dimulai.';
+  if ($('#face')) {
+    $('#face').disabled = job.state !== 'ready';
+    if (switched && job.params) $('#face').checked = job.params.face_guidance !== false;
+    if ($('#face-help')) $('#face-help').textContent = job.state === 'ready' ? 'Aktifkan untuk menambahkan mesh wajah pada hasil.' : 'Pengaturan terkunci untuk job yang sudah dimulai.';
+  }
   $('#result').hidden = false;
   if (job.state === 'ready') $('#frame').src = job.frame_url;
   $('#start').disabled = !canStart();
@@ -112,7 +105,7 @@ $('#start').addEventListener('click', async () => {
   $('#start').disabled = true; $('#error').textContent = '';
   try {
     render(await api(`/api/jobs/${current.id}/start`, {method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({...point, face_guidance: $('#face').checked, dilate: +$('#dilate').value,
+      body: JSON.stringify({...point, face_guidance: Boolean($('#face')?.checked), dilate: +$('#dilate').value,
         feather: +$('#feather').value, colormap: $('#colormap').value})}));
   } catch (error) { failure(error); $('#start').disabled = !canStart(); }
 });
@@ -169,64 +162,39 @@ function updateLivePipeline(job) {
 }
 function updateArtifactCards(job) {
   const artifacts = job.artifacts || {};
-  const hasAny = Object.keys(artifacts).length > 0;
-  const sectionSub = document.querySelector('.outputs-section .section-heading .small');
-  if (sectionSub) {
-    sectionSub.textContent = hasAny
+  const hasOutputs = Object.keys(artifacts).length > 0;
+  if ($('#output-grid')) $('#output-grid').hidden = !hasOutputs;
+  if ($('#outputs-empty')) $('#outputs-empty').hidden = hasOutputs;
+
+  const sub = $('#outputs-sub');
+  if (sub) {
+    sub.textContent = hasOutputs
       ? `Hasil aktual job: ${job.id.slice(0, 8)} · ${job.state}`
-      : 'Visual ilustrasi · jalankan proses untuk melihat hasil di sini';
+      : 'Tersedia setelah proses selesai';
+  }
+  if (!hasOutputs) return;
+
+  // 1. Composite Video
+  const compPreview = $('#preview-composite');
+  if (compPreview && artifacts['composite.mp4']) {
+    compPreview.innerHTML = `<video src="${artifacts['composite.mp4']}" controls playsinline muted></video><span class="preview-label">FINAL COMPOSITE</span><span class="placeholder-tag ready">OUTPUT SIAP</span>`;
   }
 
-  const getCard = mode => {
-    const btn = document.querySelector(`[data-preview="${mode}"]`);
-    return { btn, card: btn ? btn.closest('.output-card') : null, preview: btn ? btn.closest('.output-card')?.querySelector('.preview-image') : null };
-  };
+  // 2. SAM Mask Video
+  const samPreview = $('#preview-sam');
+  if (samPreview && artifacts['mask_preview.mp4']) {
+    samPreview.innerHTML = `<video src="${artifacts['mask_preview.mp4']}" controls playsinline muted></video><span class="preview-label">SUBJECT MASK</span><span class="placeholder-tag ready">OUTPUT SIAP</span>`;
+  }
 
-  // 1. Depth Card
-  const depth = getCard('depth');
-  if (depth.preview) {
+  // 3. Depth Anything (only show if depth_preview.mp4 exists; otherwise hide)
+  const depthCard = $('#card-depth');
+  const depthPreview = $('#preview-depth');
+  if (depthCard && depthPreview) {
     if (artifacts['depth_preview.mp4']) {
-      depth.preview.innerHTML = `<video src="${artifacts['depth_preview.mp4']}" controls playsinline muted></video><span class="preview-label">DEPTH MAP</span><span class="placeholder-tag ready">OUTPUT SIAP</span>`;
-      if (depth.btn) depth.btn.innerHTML = 'Perbesar depth video <span aria-hidden="true">↗</span>';
+      depthCard.hidden = false;
+      depthPreview.innerHTML = `<video src="${artifacts['depth_preview.mp4']}" controls playsinline muted></video><span class="preview-label">DEPTH MAP</span><span class="placeholder-tag ready">OUTPUT SIAP</span>`;
     } else {
-      if (initialCards['depth']) depth.preview.innerHTML = initialCards['depth'];
-      if (depth.btn) depth.btn.innerHTML = 'Lihat preview <span aria-hidden="true">↗</span>';
-    }
-  }
-
-  // 2. SAM Card
-  const sam = getCard('sam');
-  if (sam.preview) {
-    if (artifacts['mask_preview.mp4']) {
-      sam.preview.innerHTML = `<video src="${artifacts['mask_preview.mp4']}" controls playsinline muted></video><span class="preview-label">SUBJECT MASK</span><span class="placeholder-tag ready">OUTPUT SIAP</span>`;
-      if (sam.btn) sam.btn.innerHTML = 'Perbesar mask video <span aria-hidden="true">↗</span>';
-    } else {
-      if (initialCards['sam']) sam.preview.innerHTML = initialCards['sam'];
-      if (sam.btn) sam.btn.innerHTML = 'Lihat preview <span aria-hidden="true">↗</span>';
-    }
-  }
-
-  // 3. Composite Card
-  const comp = getCard('composite');
-  if (comp.preview) {
-    if (artifacts['composite.mp4']) {
-      comp.preview.innerHTML = `<video src="${artifacts['composite.mp4']}" controls playsinline muted></video><span class="preview-label">FINAL COMPOSITE</span><span class="placeholder-tag ready">OUTPUT SIAP</span>`;
-      if (comp.btn) comp.btn.innerHTML = 'Perbesar composite video <span aria-hidden="true">↗</span>';
-    } else {
-      if (initialCards['composite']) comp.preview.innerHTML = initialCards['composite'];
-      if (comp.btn) comp.btn.innerHTML = 'Lihat preview <span aria-hidden="true">↗</span>';
-    }
-  }
-
-  // 4. Face Card
-  const face = getCard('face');
-  if (face.preview) {
-    if (artifacts['face-tracking.json']) {
-      face.preview.innerHTML = `<div class="face-result-box"><svg viewBox="0 0 200 230"><use href="#face-mesh"/></svg><span>Tracking ekspresi wajah aktif</span></div><span class="preview-label">FACE GUIDANCE</span><span class="placeholder-tag ready">OUTPUT SIAP</span>`;
-      if (face.btn) face.btn.innerHTML = 'Unduh laporan tracking <span aria-hidden="true">↓</span>';
-    } else {
-      if (initialCards['face']) face.preview.innerHTML = initialCards['face'];
-      if (face.btn) face.btn.innerHTML = 'Lihat preview <span aria-hidden="true">↗</span>';
+      depthCard.hidden = true;
     }
   }
 }
@@ -263,28 +231,16 @@ document.querySelectorAll('[data-preview]').forEach(button => {
     const card = button.closest('.output-card');
     $('#preview-title').textContent = card.querySelector('h3').textContent;
     const artifacts = current?.artifacts || {};
-    if (mode === 'composite' && artifacts['composite.mp4']) {
+    let vidUrl = null;
+    if (mode === 'composite' && artifacts['composite.mp4']) vidUrl = artifacts['composite.mp4'];
+    else if (mode === 'sam' && artifacts['mask_preview.mp4']) vidUrl = artifacts['mask_preview.mp4'];
+    else if (mode === 'depth' && artifacts['depth_preview.mp4']) vidUrl = artifacts['depth_preview.mp4'];
+
+    if (vidUrl) {
       const vid = document.createElement('video');
-      vid.src = artifacts['composite.mp4']; vid.controls = true; vid.autoplay = true; vid.playsInline = true;
-      vid.style.width = '100%'; vid.style.maxHeight = '420px'; vid.style.borderRadius = '8px';
+      vid.src = vidUrl; vid.controls = true; vid.autoplay = true; vid.playsInline = true;
+      vid.style.width = '100%'; vid.style.maxHeight = '440px'; vid.style.borderRadius = '8px';
       $('#preview-content').replaceChildren(vid);
-    } else if (mode === 'sam' && artifacts['mask_preview.mp4']) {
-      const vid = document.createElement('video');
-      vid.src = artifacts['mask_preview.mp4']; vid.controls = true; vid.autoplay = true; vid.playsInline = true;
-      vid.style.width = '100%'; vid.style.maxHeight = '420px'; vid.style.borderRadius = '8px';
-      $('#preview-content').replaceChildren(vid);
-    } else if (mode === 'depth' && artifacts['depth_preview.mp4']) {
-      const vid = document.createElement('video');
-      vid.src = artifacts['depth_preview.mp4']; vid.controls = true; vid.autoplay = true; vid.playsInline = true;
-      vid.style.width = '100%'; vid.style.maxHeight = '420px'; vid.style.borderRadius = '8px';
-      $('#preview-content').replaceChildren(vid);
-    } else if (mode === 'face' && artifacts['face-tracking.json']) {
-      const p = document.createElement('p');
-      p.textContent = current?.warning ? `Perhatian: ${current.warning}` : 'Tracking ekspresi wajah berhasil dipetakan.';
-      const a = document.createElement('a');
-      a.href = artifacts['face-tracking.json']; a.className = 'button'; a.download = 'face-tracking.json';
-      a.textContent = 'Unduh face-tracking.json';
-      $('#preview-content').replaceChildren(p, a);
     } else {
       $('#preview-content').replaceChildren(card.querySelector('.preview-image').cloneNode(true));
     }
