@@ -1,10 +1,12 @@
 'use strict';
 const $ = selector => document.querySelector(selector);
 const video = $('#source-video');
+const HF = location.pathname.startsWith('/hf');
+const API_BASE = HF ? '/hf-api' : '/modal-api';
 let sourceUrl = null, ready = false, point = null, currentFile = null;
 
 async function api(path, options = {}) {
-  const response = await fetch('/modal-api' + path, {...options, headers: {'X-Controller': '1', ...options.headers}});
+  const response = await fetch(API_BASE + path, {...options, headers: {'X-Controller': '1', ...options.headers}});
   const data = await response.json();
   if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Permintaan gagal (${response.status})`);
   return data;
@@ -14,19 +16,23 @@ let currentJob = null;
 let pollTimer = null;
 
 async function checkConfig() {
+  const engine = HF ? 'Hugging Face' : 'Modal';
+  document.querySelectorAll('.engine-tab').forEach(tab =>
+    tab.classList.toggle('on', tab.dataset.engine === (HF ? 'hf' : 'modal')));
   try {
     const config = await api('/api/config');
     if (config.enabled) {
-      $('.engine-badge').innerHTML = '<i></i>Modal <span>/ terhubung</span>';
-      $('.connection-note').textContent = 'Integrasi Modal aktif. Siap memproses job di GPU L4.';
+      $('.engine-badge').innerHTML = `<i></i>${engine} <span>/ terhubung</span>`;
+      $('.connection-note').textContent = config.configured || `Integrasi ${engine} aktif.`;
       $('#process').disabled = false;
     } else {
-      $('.engine-badge').innerHTML = '<i></i>Modal <span>/ belum aktif</span>';
-      $('.connection-note').textContent = config.configured || 'MODAL_ENABLED belum aktif di server.';
+      $('.engine-badge').innerHTML = `<i></i>${engine} <span>/ belum aktif</span>`;
+      $('.connection-note').textContent = config.configured || `Integration ${engine} belum diaktifkan di server.`;
       $('#process').disabled = true;
     }
+    if (HF) $('.balance').hidden = true;
   } catch (err) {
-    $('.connection-note').textContent = 'Gagal membaca konfigurasi Modal.';
+    $('.connection-note').textContent = `Gagal membaca konfigurasi ${engine}.`;
   }
 }
 checkConfig();

@@ -7,7 +7,7 @@ const {chromium} = require('playwright-core');
 
 (async () => {
   const root = path.resolve(__dirname, '../static');
-  const files = {'/modal': ['modal.html', 'text/html'], '/static/modal.css': ['modal.css', 'text/css'], '/static/modal.js': ['modal.js', 'text/javascript']};
+  const files = {'/modal': ['modal.html', 'text/html'], '/hf': ['modal.html', 'text/html'], '/static/modal.css': ['modal.css', 'text/css'], '/static/modal.js': ['modal.js', 'text/javascript']};
   const server = http.createServer(async (request, response) => {
     const file = files[new URL(request.url, 'http://localhost').pathname];
     if (!file) { response.writeHead(404).end(); return; }
@@ -36,6 +36,13 @@ const {chromium} = require('playwright-core');
     assert(await page.locator('#source-timeline').isDisabled());
     assert.equal(await page.locator('.balance strong').innerText(), 'US$ —');
     assert.equal(await page.locator('.vast-link').getAttribute('href'), '/');
+    assert.equal(await page.locator('.engine-tab.on[data-engine="modal"]').count(), 1);
+    const hfPage = await browser.newPage({viewport: {width: 1440, height: 1100}});
+    hfPage.on('pageerror', error => errors.push('hf: ' + error.message));
+    await hfPage.goto(`http://127.0.0.1:${server.address().port}/hf`);
+    assert.equal(await hfPage.locator('.engine-tab.on[data-engine="hf"]').count(), 1);
+    assert.equal(await hfPage.locator('.engine-tab').count(), 2);
+    await hfPage.close();
     await page.locator('#compare-slider').fill('75');
     assert.equal(await page.locator('#comparison').evaluate(el => el.style.getPropertyValue('--split')), '75%');
     await page.locator('#tab-sam').click();

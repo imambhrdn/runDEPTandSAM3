@@ -16,6 +16,7 @@ class ModalSettings:
         self.data = data / 'modal'
         self.data.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.app_name = os.getenv('MODAL_APP_NAME', 'frame-lab-modal')
+        self.api_base = '/modal-api'
         self.function_name = os.getenv('MODAL_FUNCTION_NAME', 'process_job')
         self.gpu = os.getenv('MODAL_GPU', 'CPU')
         self.max_minutes = int(os.getenv('MODAL_MAX_MINUTES', '30'))
@@ -102,7 +103,7 @@ class ModalEngine:
                 self.store.update(jid, state='creating', stage='Mengirim job ke Modal',
                                   gpu_name=self.settings.gpu,
                                   deadline=now + self.settings.max_minutes * 60)
-            controller_url = self.settings.public_url + '/modal-api'
+            controller_url = self.settings.public_url + self.settings.api_base
             try:
                 call_id = self.client.spawn(controller_url, jid, job['token'])
             except Exception:
