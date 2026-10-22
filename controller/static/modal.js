@@ -32,12 +32,12 @@ async function checkConfig() {
 checkConfig();
 
 $('#process').addEventListener('click', async () => {
-  if (!ready || !point) return;
+  if (!ready || !point || !currentFile) return;
   $('#process').disabled = true;
   $('#error').textContent = '';
   try {
     // 1. Upload video to modal-api
-    const file = $('#source-file').files[0];
+    const file = currentFile;
     const ext = '.' + file.name.split('.').pop().toLowerCase();
     $('.connection-note').textContent = 'Mengunggah video ke VPS…';
     const job = await api('/api/upload', {
@@ -156,6 +156,7 @@ $('#source-file').addEventListener('change', event => {
   if (!file) return;
   $('#error').textContent = '';
   resetSource();
+  currentFile = null;
   // Allow choosing the same file again after a browser decode error.
   event.target.value = '';
   if (!/\.(mp4|mov|m4v|webm|mkv)$/i.test(file.name)) {
@@ -166,6 +167,7 @@ $('#source-file').addEventListener('change', event => {
     $('#error').textContent = 'Video harus berisi data dan berukuran maksimal 250 MB.';
     return;
   }
+  currentFile = file;
   $('#source-info').textContent = `${file.name} · ${(file.size / 1024 ** 2).toFixed(1)} MB · lokal`;
   $('#selection-info').textContent = 'Membaca video di browser…';
   sourceUrl = URL.createObjectURL(file);
