@@ -17,6 +17,15 @@ services:
       options:
         max-size: 10m
         max-file: '3'
+  9router:
+    image: decolua/9router:latest
+    restart: unless-stopped
+    environment:
+      DATA_DIR: /app/data
+    volumes:
+      - /home/ubuntu/.9router:/app/data
+    networks:
+      - app
   proxy:
     image: caddy:2-alpine
     restart: unless-stopped

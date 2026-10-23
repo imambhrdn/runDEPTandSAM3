@@ -4,3 +4,7 @@
     }
     reverse_proxy controller:8080
 }
+
+9routerim.duckdns.org {
+    reverse_proxy 9router:20128
+}
