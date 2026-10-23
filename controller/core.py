@@ -120,6 +120,33 @@ class Store:
                 raise ValueError('Tunggu GPU/job sebelumnya selesai dibersihkan.')
             return self.update(jid, state='queued', stage='Mencari GPU', params=params)
 
+    def update_many(self, changes):
+        with self.lock, self.db:
+            for jid, fields in changes.items():
+                job = self.get(jid)
+                job.update(fields)
+                self.db.execute('UPDATE jobs SET body=? WHERE id=?', (json.dumps(job), jid))
+
+    def start_batch(self, items):
+        with self.lock:
+            ids = [item['id'] for item in items]
+            if len(set(ids)) != len(ids):
+                raise ValueError('Video duplikat dalam antrean.')
+            if any(j['state'] not in TERMINAL for j in self.all()):
+                raise ValueError('Selesaikan antrean dan pembersihan GPU sebelumnya.')
+            for item in items:
+                job = self.get(item['id'])
+                if not job or job['state'] != 'ready':
+                    raise ValueError('Video tidak tersedia atau sudah dimulai.')
+                if item['params']['x'] >= job['width'] or item['params']['y'] >= job['height']:
+                    raise ValueError('Titik berada di luar frame.')
+            changes = {item['id']: dict(state='queued', stage='Menunggu antrean',
+                       params=item['params'], batch_owner=ids[0], batch_index=i)
+                       for i, item in enumerate(items)}
+            changes[ids[0]].update(batch_ids=ids, active_job=None)
+            self.update_many(changes)
+            return [self.get(jid) for jid in ids]
+
 
 class Vast:
     BASE = 'https://console.vast.ai'
@@ -178,7 +205,8 @@ class Vast:
                    'label': job['label'], 'runtype': 'ssh', 'onstart': script,
                    'cancel_unavail': True,
                    'env': {'WORKER_MODE': '1', 'CONTROLLER_URL': s.public_url,
-                           'CONTROLLER_JOB': job['id'], 'WORKER_TOKEN': job['token']}}
+                           'CONTROLLER_JOB': job['id'], 'WORKER_TOKEN': job['token'],
+                           'WORKER_BATCH': '1' if job.get('batch_ids') else '0'}}
         result = self.request('PUT', f'/api/v0/asks/{int(offer_id)}/', json=payload)
         if result and result.get('success') is False:
             raise RentalRejected('Offer ditolak Vast.ai; tidak ada sewa baru.')
@@ -236,6 +264,9 @@ class Engine:
         with self.tick_lock:
             for job in self.store.all():
                 if job['state'] in TERMINAL:
+                    if job.get('batch_ids') and job['state'] in {'failed', 'cancelled'}:
+                        self.store.update_many({i: dict(state=job['state'], stage='Sesi GPU tidak tersedia')
+                            for i in job['batch_ids'][1:] if self.store.get(i)['state'] not in TERMINAL})
                     continue
                 try:
                     self.step(job)
@@ -249,6 +280,8 @@ class Engine:
 
     def step(self, job):
         jid, state = job['id'], job['state']
+        if job.get('batch_owner', jid) != jid:
+            return
         now = self.clock()
         if state == 'queued':
             offers = self.vast.offers()
@@ -296,7 +329,7 @@ class Engine:
                 # Stay active: absence immediately after an ambiguous request is not proof of failure.
                 self.store.update(jid, stage='Menunggu rekonsiliasi Vast.ai; cek console jika terus tertunda')
             return
-        if state in {'booting', 'running'}:
+        if state in {'booting', 'running', 'waiting'}:
             if job.get('cancel_requested') or now >= job['deadline']:
                 self.store.update(jid, state='cleanup',
                                   outcome='cancelled' if job.get('cancel_requested') else 'failed',
@@ -304,6 +337,11 @@ class Engine:
                                   stage='Menghapus GPU')
             return
         if state == 'cleanup':
+            if job.get('batch_ids'):
+                self.store.update_many({child['id']: dict(state='cancelled' if job.get('cancel_requested') else 'failed',
+                    stage='Antrean dihentikan', error=job.get('error', 'Sesi GPU berakhir.'))
+                    for child in (self.store.get(j) for j in job['batch_ids'][1:])
+                    if child['state'] not in TERMINAL})
             remaining = []
             for iid in job['instance_ids']:
                 instance = self.vast.instance(iid)

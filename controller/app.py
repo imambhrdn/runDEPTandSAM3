@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -57,6 +58,19 @@ class Params(BaseModel):
     dilate: int = Field(default=6, ge=0, le=30)
     feather: int = Field(default=3, ge=0, le=15)
     colormap: str = Field(default='inferno', pattern='^(inferno|turbo|viridis|jet)$')
+
+
+class BatchItem(BaseModel):
+    id: str = Field(pattern='^[0-9a-f]{24}$')
+    params: Params
+
+
+class BatchStart(BaseModel):
+    jobs: list[BatchItem] = Field(min_length=1, max_length=8)
+
+
+class NextJob(BaseModel):
+    after: str | None = Field(default=None, pattern='^[0-9a-f]{24}$')
 
 
 def create_app(settings=None, vast=None, run_scheduler=True):
@@ -122,11 +136,16 @@ def create_app(settings=None, vast=None, run_scheduler=True):
         expected = 'Bearer ' + job['token']
         if not secrets.compare_digest(request.headers.get('authorization', '').encode(), expected.encode()):
             raise HTTPException(403)
+        if job.get('batch_owner') and job['batch_owner'] != jid:
+            owner = store.get(job['batch_owner'])
+            if owner.get('cancel_requested') or owner['state'] not in {'booting', 'running', 'waiting'} or time.time() >= owner['deadline']:
+                raise HTTPException(409, 'Sesi GPU tidak aktif.')
         return job
 
     def public(job):
         keys = ('id', 'state', 'stage', 'created', 'width', 'height', 'seconds', 'error',
-                'scheduler_error', 'offer_price', 'gpu_name', 'deadline', 'warning', 'instance_ids')
+                'scheduler_error', 'offer_price', 'gpu_name', 'deadline', 'warning', 'instance_ids',
+                'batch_owner', 'batch_index', 'batch_ids', 'outcome')
         result = {k: job[k] for k in keys if k in job}
         result['artifacts'] = {name: f'/api/jobs/{job["id"]}/files/{name}'
                                for name in job['artifacts']}
@@ -487,15 +506,71 @@ def create_app(settings=None, vast=None, run_scheduler=True):
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 
+    @app.post('/api/batches/start')
+    def start_batch(batch: BatchStart):
+        try:
+            return [public(job) for job in store.start_batch([j.model_dump() for j in batch.jobs])]
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post('/worker/{jid}/next')
+    def next_job(jid: str, body: NextJob, request: Request):
+        worker_job(jid, request)
+        with store.lock:
+            owner = job_or_404(jid)
+            if not owner.get('batch_ids'):
+                raise HTTPException(409, 'Bukan antrean.')
+            # A retry of the final handoff must not restart a completed lease.
+            if owner.get('batch_finished') and body.after == owner.get('active_job'):
+                return {'done': True}
+            if owner['state'] == 'creating' and not owner.get('cancel_requested'):
+                return {'wait': True}
+            if owner['state'] not in {'booting', 'running', 'waiting'} or owner.get('cancel_requested') or time.time() >= owner['deadline']:
+                raise HTTPException(409, 'Sesi GPU tidak aktif.')
+            active = owner.get('active_job')
+            ids = owner['batch_ids']
+            expected = ids[ids.index(active) - 1] if active and ids.index(active) else None
+            if active and body.after == expected:
+                target = store.get(active)  # Lost response: return the same handoff.
+            else:
+                if body.after != active:
+                    raise HTTPException(409, 'Urutan antrean tidak valid.')
+                previous = store.get(active) if active else None
+                if previous and previous['state'] not in {'waiting', 'done', 'failed', 'cancelled'}:
+                    raise HTTPException(409, 'Video sebelumnya belum selesai.')
+                index = ids.index(active) + 1 if active else 0
+                remaining = [store.get(i) for i in ids[index:]]
+                target = next((j for j in remaining if j['state'] not in {'done', 'failed', 'cancelled'}), None)
+                if target is None:
+                    store.update(jid, batch_finished=True, state='cleanup', stage='Antrean selesai; membersihkan sesi GPU')
+                    return {'done': True}
+                changes = {jid: {'active_job': target['id']}}
+                changes.setdefault(target['id'], {}).update(state='booting', deadline=owner['deadline'], stage='Memproses pada GPU yang sama')
+                store.update_many(changes)
+                target = store.get(target['id'])
+            return {'done': False, 'id': target['id'], 'token': target['token']}
+
+    @app.get('/worker/{jid}/lease')
+    def lease(jid: str, request: Request):
+        job = worker_job(jid, request)
+        if job.get('cancel_requested') or job['state'] not in {'booting', 'running', 'waiting'} or time.time() >= job['deadline']:
+            raise HTTPException(409, 'Sesi GPU tidak aktif.')
+        return {'ok': True}
+
     @app.post('/api/jobs/{jid}/cancel')
     def cancel(jid: str):
         with store.lock:
             job = job_or_404(jid)
+            if job.get('batch_owner') and job['batch_owner'] != jid:
+                jid = job['batch_owner']
+                job = job_or_404(jid)
             if job['state'] == 'ready':
                 return public(store.update(jid, state='cancelled', stage='Dibatalkan'))
             if job['state'] in {'done', 'failed', 'cancelled', 'cleanup'}:
                 return public(job)
             if job['state'] == 'queued':
+                if job.get('batch_ids'):
+                    store.update_many({i: dict(state='cancelled', stage='Dibatalkan') for i in job['batch_ids']})
                 return public(store.update(jid, state='cancelled', stage='Dibatalkan'))
             return public(store.update(jid, cancel_requested=True, stage='Pembatalan diminta'))
 
@@ -509,6 +584,10 @@ def create_app(settings=None, vast=None, run_scheduler=True):
     @app.get('/worker/{jid}/task')
     def task(jid: str, request: Request):
         job = worker_job(jid, request)
+        if job.get('batch_owner'):
+            owner = store.get(job['batch_owner'])
+            if owner.get('cancel_requested') or time.time() >= owner['deadline']:
+                raise HTTPException(409, 'Sesi GPU berakhir.')
         if job.get('cancel_requested') or job['state'] not in {'creating', 'booting', 'running'}:
             raise HTTPException(409, 'Job tidak aktif.')
         return {'params': job['params'], 'source': job['source'],
@@ -575,7 +654,7 @@ def create_app(settings=None, vast=None, run_scheduler=True):
         worker_job(jid, request)
         with store.lock:
             job = job_or_404(jid)
-            if job['state'] in {'cleanup', 'done'} and job.get('outcome') == 'done':
+            if job['state'] in {'cleanup', 'done', 'waiting'} and job.get('outcome') == 'done':
                 return {'ok': True}
             if job['state'] not in {'booting', 'running'} or job.get('cancel_requested'):
                 raise HTTPException(409)
@@ -590,8 +669,9 @@ def create_app(settings=None, vast=None, run_scheduler=True):
                 missing = len(report['missing_frames'])
                 if missing:
                     warning = f'Wajah hilang pada {missing} frame. Periksa seluruh hasil.'
-            store.update(jid, state='cleanup', outcome='done', warning=warning,
-                         stage='Hasil tersimpan di VPS; menghapus GPU')
+            state = ('waiting' if job.get('batch_ids') else 'done') if job.get('batch_owner') else 'cleanup'
+            store.update(jid, state=state, outcome='done', warning=warning,
+                         stage='Hasil tersimpan di VPS')
         return {'ok': True}
 
     @app.post('/worker/{jid}/failed')
@@ -600,10 +680,15 @@ def create_app(settings=None, vast=None, run_scheduler=True):
         body = await request.json()
         with store.lock:
             job = job_or_404(jid)
+            if job.get('batch_ids') and body.get('batch_abort') is True and job['state'] in {'booting', 'running', 'waiting'}:
+                store.update(jid, state='cleanup', outcome='failed',
+                             error=str(body.get('error', 'Worker antrean gagal'))[:300], stage='Antrean terhenti')
+                return {'ok': True}
             if job['state'] == 'creating':
                 store.update(jid, worker_failed=True, error=str(body.get('error', 'Worker gagal'))[:300])
             elif job['state'] in {'booting', 'running'}:
-                store.update(jid, state='cleanup', outcome='failed',
+                state = ('waiting' if job.get('batch_ids') else 'failed') if job.get('batch_owner') else 'cleanup'
+                store.update(jid, state=state, outcome='failed',
                              error=str(body.get('error', 'Worker gagal'))[:300], stage='Menghapus GPU')
         return {'ok': True}
 

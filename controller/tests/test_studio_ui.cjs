@@ -1,4 +1,4 @@
-// Run with NODE_PATH pointing to playwright-core and CHROMIUM_PATH to a browser.
+// NODE_PATH=<playwright-core parent> CHROMIUM_PATH=<chromium> TEST_VIDEO_PATH=<video> node controller/tests/test_studio_ui.cjs
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs/promises');
@@ -7,120 +7,71 @@ const {chromium} = require('playwright-core');
 
 (async () => {
   const root = path.resolve(__dirname, '../static');
-  const files = {'/': ['index.html', 'text/html'], '/static/style.css': ['style.css', 'text/css'], '/static/app.js': ['app.js', 'text/javascript']};
-  const server = http.createServer(async (request, response) => {
-    const file = files[new URL(request.url, 'http://localhost').pathname];
-    if (!file) { response.writeHead(404).end(); return; }
-    try {
-      response.writeHead(200, {'Content-Type': file[1]});
-      response.end(await fs.readFile(path.join(root, file[0])));
-    } catch {
-      response.writeHead(500).end();
-    }
+  const server = http.createServer(async (req, res) => {
+    const file = {'/': 'index.html', '/static/app.js': 'app.js', '/static/style.css': 'style.css'}[req.url];
+    if (!file) return res.writeHead(404).end();
+    res.setHeader('Content-Type', file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html');
+    res.end(await fs.readFile(path.join(root, file)));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   let browser;
   try {
-    browser = await chromium.launch({executablePath: process.env.CHROMIUM_PATH, args: ['--no-sandbox']});
-    const page = await browser.newPage({viewport: {width: 1440, height: 1100}, reducedMotion: 'reduce'});
-    const errors = [], unexpected = [];
-    page.on('pageerror', error => errors.push(error.message));
+    browser = await chromium.launch({executablePath: process.env.CHROMIUM_PATH, headless: true, args: ['--no-sandbox']});
+    const page = await browser.newPage();
+    const errors = [], jobs = [], starts = [];
+    page.on('pageerror', e => errors.push(e.message));
     await page.route('**/api/**', async route => {
-      const request = route.request(), endpoint = new URL(request.url()).pathname;
-      if (endpoint === '/api/upload') {
-        assert.equal(request.method(), 'POST');
-        await route.fulfill({json: {id: 'upload-test', state: 'ready', stage: 'Pilih subjek', width: 160, height: 120, seconds: 2, artifacts: {}, frame_url: ''}});
-        return;
-      }
-      assert.equal(request.method(), 'GET', 'UI preview must never start a paid job');
-      const data = endpoint === '/api/config' ? {machine_id: 0, max_price: .099, min_vram: 12, max_minutes: 45, max_upload_mb: 250, auto_destroy: false} : [];
-      if (!['/api/config', '/api/jobs'].includes(endpoint) && !endpoint.includes('/files/')) unexpected.push(endpoint);
+      const req = route.request(), url = new URL(req.url());
+      let data;
+      if (url.pathname === '/api/config') data = {max_upload_mb: 250, max_minutes: 45, auto_destroy: false, balance: 1.72};
+      else if (url.pathname === '/api/jobs') data = jobs;
+      else if (url.pathname === '/api/upload') {
+        const id = String(jobs.length + 1).padStart(24, '0');
+        data = {id, state: 'ready', stage: 'Pilih subjek', width: 160, height: 120, artifacts: {}, frame_url: '/frame.svg'};
+        jobs.push(data);
+      } else if (url.pathname === '/api/batches/start') {
+        const body = req.postDataJSON(); starts.push(body);
+        assert.equal(req.headers()['x-controller'], '1');
+        for (const [i, j] of jobs.entries()) Object.assign(j, {state: 'queued', batch_owner: jobs[0].id, batch_index: i, stage: 'Antrean'});
+        data = jobs;
+      } else throw new Error(`Unexpected API: ${url.pathname}`);
       await route.fulfill({json: data});
     });
-    await page.goto(`http://127.0.0.1:${server.address().port}`);
-    await page.getByText('Belum ada proses. Unggah klip pertama Anda untuk mulai.').waitFor();
-    assert.equal(await page.locator('#outputs-empty').isVisible(), true);
-    assert.equal(await page.locator('#output-grid').isHidden(), true);
-    assert.equal(await page.locator('.balance-placeholder strong').innerText(), 'US$ —');
-    const balance = await page.locator('.balance-placeholder').boundingBox();
-    assert(balance.x > 1000, 'Balance belongs at the top right');
-    assert(!(await page.locator('.gpu-panel').innerText()).includes('US$'));
-    assert((await page.locator('#session-note').innerText()).includes('Penghapusan GPU manual'));
-    await page.locator('#demo').click();
-    assert.equal(await page.locator('.pipeline-step.active').count(), 1);
-    await page.waitForFunction(() => document.querySelector('#demo-counter').textContent === '4 / 4 tahap');
-    assert.equal(await page.locator('.pipeline-step.done').count(), 4);
-    await page.evaluate(() => render({id: 'test', state: 'ready', stage: 'Pilih subjek', width: 960, height: 540, artifacts: {}, frame_url: ''}));
-    assert(await page.locator('#selection-timeline').isDisabled());
-    assert.equal(await page.locator('#pick #selection-timeline').count(), 1);
-    await page.locator('#stage').focus();
-    await page.keyboard.press('Enter');
-    assert.equal(await page.locator('#start').isEnabled(), true);
-    assert((await page.locator('#point').innerText()).includes('480, 270'));
-    // Generate a finite-duration fixture: ffmpeg -f lavfi -i color=c=blue:s=160x120:r=24:d=2 -c:v libvpx test.webm
-    const fixture = await fs.readFile(process.env.TEST_VIDEO_PATH);
-    await page.locator('#file').setInputFiles({name: 'test.webm', mimeType: 'video/webm', buffer: fixture});
-    await page.locator('#source-video').waitFor();
-    assert(await page.locator('#selection-timeline').isEnabled());
-    await page.locator('#selection-timeline').fill('1');
-    await page.waitForFunction(() => !document.querySelector('#source-video').seeking);
-    assert.equal(await page.locator('#source-video').evaluate(video => video.currentTime), 1);
-    await page.locator('#stage').click({position: {x: 80, y: 60}});
-    const selected = await page.evaluate(() => point);
-    assert(Math.abs(selected.x - 80) <= 1 && Math.abs(selected.y - 60) <= 1, 'Click maps to displayed video coordinates');
-    assert((await page.locator('#point').innerText()).includes('belum bisa dikirim ke worker'));
+    await page.route('**/frame.svg', route => route.fulfill({contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120"><rect width="160" height="120" fill="green"/></svg>'}));
+    await page.goto(`http://127.0.0.1:${server.address().port}/`);
+    await page.waitForFunction(() => !document.querySelector('#file').disabled);
+    assert.equal(await page.locator('main > section').count(), 2);
+    assert.equal(await page.locator('#demo,.sidebar,.pipeline').count(), 0);
+    const buffer = await fs.readFile(process.env.TEST_VIDEO_PATH);
+    await page.locator('#file').setInputFiles([{name: 'first.webm', mimeType: 'video/webm', buffer}, {name: 'second.webm', mimeType: 'video/webm', buffer}]);
+    await page.waitForFunction(() => document.querySelectorAll('.queue-row').length === 2 && !document.querySelector('#file').disabled);
+    await page.waitForFunction(() => !document.querySelector('#source-video').hidden);
+    await page.locator('#stage').focus(); await page.keyboard.press('Enter');
     assert(await page.locator('#start').isDisabled());
-    await page.evaluate(() => render(current));
-    assert(await page.locator('#start').isDisabled(), 'Polling must not enable starting on a later frame');
-    await page.locator('#first-frame').click();
-    await page.waitForFunction(() => !document.querySelector('#source-video').seeking);
-    assert(await page.locator('#mark').isHidden());
-    assert(await page.locator('#start').isDisabled());
-    await page.locator('#stage').click({position: {x: 80, y: 60}});
+    await page.locator('.queue-row').nth(1).locator('button').first().click();
+    await page.waitForFunction(() => !document.querySelector('#source-video').hidden);
+    await page.locator('#stage').focus(); await page.keyboard.press('Enter');
     assert(await page.locator('#start').isEnabled());
-    await page.locator('#selection-timeline').fill('1.5');
-    assert(await page.locator('#mark').isHidden());
+    await page.locator('#timeline').evaluate(el => { el.value = '0.5'; el.dispatchEvent(new Event('input')); });
+    await page.waitForFunction(() => !document.querySelector('#source-video').seeking);
+    await page.locator('#stage').focus(); await page.keyboard.press('Enter');
     assert(await page.locator('#start').isDisabled());
-    await page.evaluate(() => render({id: 'test', state: 'failed', stage: 'Proses gagal', gpu_name: 'RTX A4000', error: 'Contoh error', artifacts: {}, instance_ids: [123]}));
-    assert.equal(await page.locator('#gpu-name').innerText(), 'RTX A4000');
-    assert.equal(await page.locator('#job-error').innerText(), 'Contoh error');
-    assert.equal(await page.locator('#cancel').isVisible(), false);
-    // Render job with composite and sam mask (no depth)
-    await page.evaluate(() => render({
-      id: 'job-12345678', state: 'done', stage: 'Selesai',
-      artifacts: {
-        'composite.mp4': '/api/jobs/job-12345678/files/composite.mp4',
-        'mask_preview.mp4': '/api/jobs/job-12345678/files/mask_preview.mp4'
-      }
-    }));
-    assert.equal(await page.locator('#output-grid').isVisible(), true);
-    assert.equal(await page.locator('#card-depth').isHidden(), true, 'Depth card hidden when no depth artifact');
-    assert.equal(await page.locator('#card-composite').isVisible(), true);
-    assert.equal(await page.locator('#card-sam').isVisible(), true);
-    assert.equal(await page.locator('.output-card video').count(), 2);
-    // Now add depth_preview.mp4 to artifacts
-    await page.evaluate(() => render({
-      id: 'job-12345678', state: 'done', stage: 'Selesai',
-      artifacts: {
-        'composite.mp4': '/api/jobs/job-12345678/files/composite.mp4',
-        'mask_preview.mp4': '/api/jobs/job-12345678/files/mask_preview.mp4',
-        'depth_preview.mp4': '/api/jobs/job-12345678/files/depth_preview.mp4'
-      }
-    }));
-    assert.equal(await page.locator('#card-depth').isVisible(), true, 'Depth card visible when depth artifact exists');
-    assert.equal(await page.locator('.output-card video').count(), 3);
-    assert((await page.locator('.outputs-section .section-heading .small').innerText()).includes('job-1234'));
-    await page.evaluate(() => { document.querySelector('#result').hidden = true; });
-    if (process.env.SCREENSHOT_PATH) await page.screenshot({path: process.env.SCREENSHOT_PATH, fullPage: true});
+    await page.locator('#first').click();
+    await page.waitForFunction(() => !document.querySelector('#source-video').seeking && document.querySelector('#source-video').currentTime === 0);
+    await page.locator('#stage').focus(); await page.keyboard.press('Enter');
+    await page.locator('#start').click();
+    await page.waitForFunction(() => document.querySelectorAll('#results article').length === 2);
+    assert.equal(starts.length, 1); assert.equal(starts[0].jobs.length, 2);
+    assert(starts[0].jobs.every(j => j.params.face_guidance === false && j.params.x === 80 && j.params.y === 60));
+    jobs[0].artifacts = {'composite.mp4': '/result.mp4'};
+    await page.waitForFunction(() => document.querySelector('#results video'));
+    assert.equal(await page.locator('#results a').count(), 1);
+    assert.equal(await page.locator('[data-artifact="depth_preview.mp4"]').count(), 0);
     for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({width, height: 1000});
-      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Horizontal overflow at ${width}px`);
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Overflow at ${width}`);
     }
     assert.deepEqual(errors, []);
-    assert.deepEqual(unexpected, []);
-    console.log('Studio UI: desktop/mobile, placeholders, selection timeline, seek/click, first-frame guard, keyboard, status: OK. No rental calls.');
-  } finally {
-    if (browser) await browser.close();
-    await new Promise(resolve => server.close(resolve));
-  }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+    console.log('Studio: multiple uploads, per-video selection, first-frame guard, one batch request, real artifacts, mobile OK. No rentals.');
+  } finally { if (browser) await browser.close(); await new Promise(resolve => server.close(resolve)); }
+})().catch(e => {console.error(e); process.exitCode = 1;});

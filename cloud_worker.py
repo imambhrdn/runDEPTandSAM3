@@ -1,6 +1,10 @@
 """Run one controller job; never receive the Vast.ai account API key."""
 import hashlib
 import os
+import shutil
+import signal
+import subprocess
+import sys
 from pathlib import Path
 import threading
 import time
@@ -61,6 +65,8 @@ def main():
 
     task = call('GET', '/task').json()
     root = worker.ROOT / 'controller-job'
+    if root.exists():
+        shutil.rmtree(root)
     root.mkdir(parents=True, exist_ok=True)
     source = root / task['source']
     response = call('GET', '/source', stream=True)
@@ -108,12 +114,44 @@ def main():
         thread.join(timeout=1)
 
 
+def batch():
+    after = None
+    while True:
+        task = call('POST', '/next', json={'after': after}).json()
+        if task.get('wait'):
+            time.sleep(5)
+            continue
+        if task['done']:
+            return
+        # Isolate each job's heartbeat, CUDA state, and failures; reuse installed models on disk.
+        env = {**os.environ, 'WORKER_BATCH': '0', 'CONTROLLER_JOB': task['id'], 'WORKER_TOKEN': task['token']}
+        process = subprocess.Popen([sys.executable, __file__], env=env, start_new_session=True)
+        try:
+            while True:
+                try:
+                    process.wait(timeout=5)
+                    break
+                except subprocess.TimeoutExpired:
+                    # Stop promptly on cancellation or a lost controller, not after long artifact retry timeouts.
+                    response = requests.get(BASE + '/lease', headers={'Authorization': 'Bearer ' + TOKEN}, timeout=10)
+                    response.raise_for_status()
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
+        after = task['id']
+
+
 if __name__ == '__main__':
     try:
-        main()
+        batch() if os.getenv('WORKER_BATCH') == '1' else main()
     except Exception as exc:
         try:
-            call('POST', '/failed', json={'error': str(exc)[:300]})
+            call('POST', '/failed', json={'error': str(exc)[:300], 'batch_abort': os.getenv('WORKER_BATCH') == '1'})
         except Exception:
             pass
         raise
